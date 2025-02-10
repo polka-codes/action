@@ -1,0 +1,31 @@
+scripts:
+  check:
+    command: bun run check
+    description: Run type checking and linting
+  format:
+    command: bun run fix
+    description: Format code using Biome
+  lint:
+    command: bun run lint
+    description: Check code style with Biome
+  test:
+    command: bun test
+    description: Run tests with Bun's test runner
+  build:
+    command: bun run build
+    description: Build the project for production
+  typecheck:
+    command: bun run typecheck
+    description: Run TypeScript type checking
+rules:
+  - Use `bun` as package manager
+  - Write code in TypeScript with strict type checking
+  - Use single quotes for strings
+  - Use spaces for indentation (2 spaces)
+  - Run tests using Bun's test runner
+excludeFiles:
+  - dist/
+  - bun.lock
+  - .env
+  - .env.*
+
