@@ -22726,7 +22726,7 @@ var require_github = __commonJS((exports) => {
   exports.getOctokit = getOctokit;
 });
 
-// src/main.ts
+// src/action.ts
 var core = __toESM(require_core(), 1);
 var github = __toESM(require_github(), 1);
 import { execSync } from "node:child_process";
@@ -22740,6 +22740,14 @@ async function getInputs() {
     githubToken: core.getInput("github_token")
   };
 }
+var validateInputs = (inputs) => {
+  if (inputs.issueNumber && inputs.prNumber) {
+    throw new Error("Only one of issue_number or pr_number can be provided");
+  }
+  if (!inputs.issueNumber && !inputs.prNumber && !inputs.task) {
+    throw new Error("One of issue_number, pr_number, or task must be provided");
+  }
+};
 async function getTaskFromIssue(issueNumber, octokit) {
   const { owner, repo } = github.context.repo;
   const { data: issue } = await octokit.rest.issues.get({
@@ -22747,7 +22755,36 @@ async function getTaskFromIssue(issueNumber, octokit) {
     repo,
     issue_number: issueNumber
   });
-  return issue.body || "";
+  const { data: comments } = await octokit.rest.issues.listComments({
+    owner,
+    repo,
+    issue_number: issueNumber
+  });
+  const issueData = {
+    number: issue.number,
+    title: issue.title,
+    body: issue.body,
+    author: issue.user?.login,
+    created_at: issue.created_at,
+    comments: comments.map((c) => ({
+      author: c.user?.login,
+      body: c.body,
+      created_at: c.created_at
+    }))
+  };
+  const commentsText = issueData.comments.map((comment) => `@${comment.author} at ${comment.created_at}:
+${comment.body}
+`).join(`
+
+`);
+  return `Issue #${issueData.number}: ${issueData.title}
+Author: @${issueData.author}
+Created: ${issueData.created_at}
+
+${issueData.body}
+
+Comments:
+${commentsText}`;
 }
 async function getTaskFromPR(prNumber, octokit) {
   const { owner, repo } = github.context.repo;
@@ -22772,6 +22809,7 @@ async function createPullRequest(octokit, branchName, title, body) {
 async function run() {
   try {
     const inputs = await getInputs();
+    validateInputs(inputs);
     const octokit = github.getOctokit(inputs.githubToken);
     let taskDescription = inputs.task;
     if (inputs.issueNumber) {
@@ -22801,4 +22839,6 @@ ${taskDescription}`);
     }
   }
 }
+
+// src/main.ts
 run();
