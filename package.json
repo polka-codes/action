@@ -1,0 +1,24 @@
+{
+  "name": "polka-github-action",
+  "module": "src/main.ts",
+  "type": "module",
+  "version": "1.0.0",
+  "description": "GitHub Action for Polka Codes integration",
+  "scripts": {
+    "build": "bun build ./src/main.ts --outfile dist/index.js --target node",
+    "test": "bun test",
+    "format": "bunx @biomejs/biome format .",
+    "check": "bunx @biomejs/biome check ."
+  },
+  "dependencies": {
+    "@actions/core": "^1.10.1",
+    "@actions/github": "^6.0.0",
+    "@polka-codes/cli": "latest"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "1.5.3",
+    "@types/node": "^20.11.17",
+    "bun-types": "latest",
+    "typescript": "^5.3.3"
+  }
+}
