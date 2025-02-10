@@ -20,7 +20,7 @@ async function getInputs(): Promise<ActionInputs> {
     issueNumber: issueNumberStr ? Number.parseInt(issueNumberStr) : undefined,
     prNumber: prNumberStr ? Number.parseInt(prNumberStr) : undefined,
     task: core.getInput('task'),
-    githubToken: core.getInput('github_token', { required: true }),
+    githubToken: core.getInput('github_token'),
   }
 }
 
