@@ -15,25 +15,34 @@ interface ActionInputs {
 }
 
 async function getInputs(): Promise<ActionInputs> {
+  core.debug('Getting action inputs')
   const issueNumberStr = core.getInput('issue_number')
   const prNumberStr = core.getInput('pr_number')
 
-  return {
+  const inputs = {
     issueNumber: issueNumberStr ? Number.parseInt(issueNumberStr) : undefined,
     prNumber: prNumberStr ? Number.parseInt(prNumberStr) : undefined,
     task: core.getInput('task'),
     githubToken: core.getInput('github_token', { required: true }),
     config: core.getInput('config'),
   }
+
+  core.debug(`Received inputs: issue=${issueNumberStr}, pr=${prNumberStr}, task=${inputs.task}, config=${inputs.config}`)
+  return inputs
 }
 
 const validateInputs = (inputs: ActionInputs) => {
+  core.debug('Validating inputs')
   if (inputs.issueNumber && inputs.prNumber) {
-    throw new Error('Only one of issue_number or pr_number can be provided')
+    const error = 'Only one of issue_number or pr_number can be provided'
+    core.error(error)
+    throw new Error(error)
   }
 
   if (!inputs.issueNumber && !inputs.prNumber && !inputs.task) {
-    throw new Error('One of issue_number, pr_number, or task must be provided')
+    const error = 'One of issue_number, pr_number, or task must be provided'
+    core.error(error)
+    throw new Error(error)
   }
 }
 
@@ -45,52 +54,74 @@ export async function run(): Promise<void> {
     const octokit = github.getOctokit(inputs.githubToken)
 
     const { owner, repo } = github.context.repo
+    core.info(`Processing repository: ${owner}/${repo}`)
 
     // Get task description
+    core.info('Fetching task description')
     let taskDescription = inputs.task
     if (inputs.issueNumber) {
+      core.info(`Fetching issue #${inputs.issueNumber}`)
       taskDescription = await fetchIssue(owner, repo, inputs.issueNumber, octokit)
+      core.debug(`Fetched issue description: ${taskDescription}`)
     } else if (inputs.prNumber) {
+      core.info(`Fetching PR #${inputs.prNumber}`)
       taskDescription = await fetchPR(owner, repo, inputs.prNumber, octokit)
+      core.debug(`Fetched PR description: ${taskDescription}`)
     }
 
     if (!taskDescription) {
-      throw new Error('No task description provided')
+      const error = 'No task description provided'
+      core.error(error)
+      throw new Error(error)
     }
 
     let configArgs: string[] = []
     if (inputs.config) {
       const configPaths = inputs.config.split(',')
       configArgs = configPaths.flatMap((path) => ['--config', path])
+      core.info(`Using config files: ${configPaths.join(', ')}`)
     }
 
     let branchName = ''
 
     if (inputs.prNumber) {
       // Checkout existing PR branch
+      core.info(`Checking out PR #${inputs.prNumber}`)
       spawnSync('gh', ['pr', 'checkout', inputs.prNumber.toString()], { stdio: 'inherit' })
     } else {
       // Create a new branch for changes
       branchName = `polka/task-${Date.now()}`
+      core.info(`Creating new branch: ${branchName}`)
       spawnSync('git', ['checkout', '-b', branchName], { stdio: 'inherit' })
     }
 
+    core.info('Starting task processing')
+    core.debug(`Task description: ${taskDescription}`)
+
     // Process task using Polka Codes CLI
+    core.info('Executing Polka Codes CLI')
     spawnSync('npx', ['@polka-codes/cli@latest', ...configArgs, taskDescription], { stdio: 'inherit' })
 
     // Commit and push changes
+    core.info('Committing changes')
     spawnSync('git', ['add', '.'], { stdio: 'inherit' })
     spawnSync('npx', ['@polka-codes/cli@latest', ...configArgs, 'commit'], { stdio: 'inherit' })
+    core.info('Pushing changes')
     if (branchName) {
+      core.info(`Pushing to branch: ${branchName}`)
       spawnSync('git', ['push', 'origin', branchName], { stdio: 'inherit' })
     } else {
+      core.info('Pushing to current branch')
       spawnSync('git', ['push'], { stdio: 'inherit' })
     }
     spawnSync('npx', ['@polka-codes/cli@latest', ...configArgs, 'pr'], { stdio: 'inherit' })
   } catch (error) {
     if (error instanceof Error) {
+      core.error(`Failed with error: ${error.message}`)
+      core.error(`Stack trace: ${error.stack}`)
       core.setFailed(error.message)
     } else {
+      core.error('An unexpected error occurred')
       core.setFailed('An unexpected error occurred')
     }
   }
