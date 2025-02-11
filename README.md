@@ -86,7 +86,7 @@ jobs:
           pr_number: ${{ github.event.pull_request.number }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          POLKA_CODES_TOKEN: ${{ secrets.POLKA_CODES_TOKEN }}
+          POLKA_API_KEY: ${{ secrets.POLKA_API_KEY }}
 ```
 
 ### Process Issues
@@ -107,7 +107,7 @@ jobs:
           issue_number: ${{ github.event.issue.number }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          POLKA_CODES_TOKEN: ${{ secrets.POLKA_CODES_TOKEN }}
+          POLKA_API_KEY: ${{ secrets.POLKA_API_KEY }}
 ```
 
 ### Custom Configuration
@@ -129,7 +129,7 @@ jobs:
           config: .polkacodes.yml,custom.polkacodes.yml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          POLKA_CODES_TOKEN: ${{ secrets.POLKA_CODES_TOKEN }}
+          POLKA_API_KEY: ${{ secrets.POLKA_API_KEY }}
 ```
 
 ### Direct Task Processing
@@ -153,7 +153,7 @@ jobs:
           task: ${{ github.event.inputs.task }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          POLKA_CODES_TOKEN: ${{ secrets.POLKA_CODES_TOKEN }}
+          POLKA_API_KEY: ${{ secrets.POLKA_API_KEY }}
 ```
 
 ---
