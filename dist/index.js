@@ -18972,7 +18972,7 @@ var require_utils3 = __commonJS((exports) => {
   exports.getApiBaseUrl = getApiBaseUrl;
 });
 
-// node_modules/universal-user-agent/dist-node/index.js
+// node_modules/@actions/github/node_modules/@octokit/core/node_modules/universal-user-agent/dist-node/index.js
 var require_dist_node = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   function getUserAgent() {
@@ -18987,7 +18987,7 @@ var require_dist_node = __commonJS((exports) => {
   exports.getUserAgent = getUserAgent;
 });
 
-// node_modules/before-after-hook/lib/register.js
+// node_modules/@actions/github/node_modules/@octokit/core/node_modules/before-after-hook/lib/register.js
 var require_register = __commonJS((exports, module) => {
   module.exports = register;
   function register(state, name, method, options) {
@@ -19013,7 +19013,7 @@ var require_register = __commonJS((exports, module) => {
   }
 });
 
-// node_modules/before-after-hook/lib/add.js
+// node_modules/@actions/github/node_modules/@octokit/core/node_modules/before-after-hook/lib/add.js
 var require_add = __commonJS((exports, module) => {
   module.exports = addHook;
   function addHook(state, kind, name, hook) {
@@ -19051,7 +19051,7 @@ var require_add = __commonJS((exports, module) => {
   }
 });
 
-// node_modules/before-after-hook/lib/remove.js
+// node_modules/@actions/github/node_modules/@octokit/core/node_modules/before-after-hook/lib/remove.js
 var require_remove = __commonJS((exports, module) => {
   module.exports = removeHook;
   function removeHook(state, name, method) {
@@ -19068,7 +19068,7 @@ var require_remove = __commonJS((exports, module) => {
   }
 });
 
-// node_modules/before-after-hook/index.js
+// node_modules/@actions/github/node_modules/@octokit/core/node_modules/before-after-hook/index.js
 var require_before_after_hook = __commonJS((exports, module) => {
   var register = require_register();
   var addHook = require_add();
@@ -19117,7 +19117,7 @@ var require_before_after_hook = __commonJS((exports, module) => {
   module.exports.Collection = Hook.Collection;
 });
 
-// node_modules/@octokit/endpoint/dist-node/index.js
+// node_modules/@actions/github/node_modules/@octokit/core/node_modules/@octokit/request/node_modules/@octokit/endpoint/dist-node/index.js
 var require_dist_node2 = __commonJS((exports, module) => {
   var __defProp2 = Object.defineProperty;
   var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -19530,7 +19530,7 @@ var require_once = __commonJS((exports, module) => {
   }
 });
 
-// node_modules/@octokit/request-error/dist-node/index.js
+// node_modules/@actions/github/node_modules/@octokit/core/node_modules/@octokit/request-error/dist-node/index.js
 var require_dist_node4 = __commonJS((exports, module) => {
   var __create2 = Object.create;
   var __defProp2 = Object.defineProperty;
@@ -19601,7 +19601,7 @@ var require_dist_node4 = __commonJS((exports, module) => {
   };
 });
 
-// node_modules/@octokit/request/dist-node/index.js
+// node_modules/@actions/github/node_modules/@octokit/core/node_modules/@octokit/request/dist-node/index.js
 var require_dist_node5 = __commonJS((exports, module) => {
   var __defProp2 = Object.defineProperty;
   var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -19800,7 +19800,7 @@ var require_dist_node5 = __commonJS((exports, module) => {
   });
 });
 
-// node_modules/@octokit/graphql/dist-node/index.js
+// node_modules/@actions/github/node_modules/@octokit/core/node_modules/@octokit/graphql/dist-node/index.js
 var require_dist_node6 = __commonJS((exports, module) => {
   var __defProp2 = Object.defineProperty;
   var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -19924,7 +19924,7 @@ var require_dist_node6 = __commonJS((exports, module) => {
   }
 });
 
-// node_modules/@octokit/auth-token/dist-node/index.js
+// node_modules/@actions/github/node_modules/@octokit/core/node_modules/@octokit/auth-token/dist-node/index.js
 var require_dist_node7 = __commonJS((exports, module) => {
   var __defProp2 = Object.defineProperty;
   var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -19987,7 +19987,7 @@ var require_dist_node7 = __commonJS((exports, module) => {
   };
 });
 
-// node_modules/@octokit/core/dist-node/index.js
+// node_modules/@actions/github/node_modules/@octokit/core/dist-node/index.js
 var require_dist_node8 = __commonJS((exports, module) => {
   var __defProp2 = Object.defineProperty;
   var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -20114,7 +20114,7 @@ var require_dist_node8 = __commonJS((exports, module) => {
   };
 });
 
-// node_modules/@octokit/plugin-rest-endpoint-methods/dist-node/index.js
+// node_modules/@actions/github/node_modules/@octokit/plugin-rest-endpoint-methods/dist-node/index.js
 var require_dist_node9 = __commonJS((exports, module) => {
   var __defProp2 = Object.defineProperty;
   var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -22251,7 +22251,7 @@ var require_dist_node9 = __commonJS((exports, module) => {
   legacyRestEndpointMethods.VERSION = VERSION;
 });
 
-// node_modules/@octokit/plugin-paginate-rest/dist-node/index.js
+// node_modules/@actions/github/node_modules/@octokit/plugin-paginate-rest/dist-node/index.js
 var require_dist_node10 = __commonJS((exports, module) => {
   var __defProp2 = Object.defineProperty;
   var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -22730,6 +22730,233 @@ var require_github = __commonJS((exports) => {
 var core = __toESM(require_core(), 1);
 var github = __toESM(require_github(), 1);
 import { execSync } from "node:child_process";
+
+// src/queries/fetchIssue.gql
+var fetchIssue_default = `query fetchIssue($owner: String!, $repo: String!, $issueNumber: Int!) {
+  repository(owner: $owner, name: $repo) {
+    issue(number: $issueNumber) {
+      number
+      title
+      body
+      author {
+        login
+      }
+      createdAt
+      comments(last: 100) {
+        totalCount
+        nodes {
+          author {
+            login
+          }
+          body
+          createdAt
+        }
+      }
+    }
+  }
+}
+`;
+
+// src/queries/fetchPR.gql
+var fetchPR_default = `query fetchPR($owner: String!, $repo: String!, $prNumber: Int!) {
+  repository(owner: $owner, name: $repo) {
+    pullRequest(number: $prNumber) {
+      number
+      title
+      body
+      author {
+        login
+      }
+      createdAt
+      comments(last: 100) {
+        totalCount
+        nodes {
+          author {
+            login
+          }
+          body
+          createdAt
+          minimizedReason
+        }
+      }
+      reviews(last: 100) {
+        totalCount
+        nodes {
+          author {
+            login
+          }
+          body
+          createdAt
+          comments(last: 100) {
+            totalCount
+            nodes {
+              ...ReviewCommentFields
+            }
+          }
+        }
+      }
+      reviewThreads(last: 100) {
+        totalCount
+        nodes {
+          isResolved
+          comments(last: 100) {
+            totalCount
+            nodes {
+              ...ReviewCommentFields
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fragment ReviewCommentFields on PullRequestReviewComment {
+  author {
+    login
+  }
+  body
+  createdAt
+  diffHunk
+  minimizedReason
+}
+`;
+
+// src/github.ts
+var query = (octokit) => octokit.graphql;
+async function fetchIssue(owner, repo, issueNumber, octokit) {
+  const resp = await query(octokit)(fetchIssue_default, { owner, repo, issueNumber });
+  const issue = resp.repository?.issue;
+  if (!issue) {
+    throw new Error("Issue not found");
+  }
+  let text = `#${issue.number}: ${issue.title}
+${issue.body}
+`;
+  const comments = issue.comments?.nodes;
+  if (comments) {
+    const totalCount = issue.comments?.totalCount ?? 0;
+    const skipped = totalCount - (comments?.length ?? 0);
+    text += `
+============ Comments ============
+`;
+    if (skipped > 0) {
+      text += `${skipped} comment${skipped > 1 ? "s" : ""} skipped
+`;
+    }
+    for (const comment of comments) {
+      if (!comment) {
+        continue;
+      }
+      const author = comment.author?.login ?? "unknown";
+      text += `${comment.createdAt} @${author}:
+${comment.body}
+========================
+`;
+    }
+  }
+  return text;
+}
+async function fetchPR(owner, repo, prNumber, octokit) {
+  const resp = await query(octokit)(fetchPR_default, { owner, repo, prNumber });
+  const pr = resp.repository?.pullRequest;
+  if (!pr) {
+    throw new Error("PR not found");
+  }
+  const diff = await octokit.request({
+    method: "GET",
+    url: `https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}`,
+    headers: {
+      accept: "application/vnd.github.v3.diff"
+    }
+  });
+  let text = `#${pr.number}: ${pr.title}
+${pr.body}
+============ Diff ============
+${diff.data}
+`;
+  const comments = pr.comments?.nodes;
+  if (comments && comments.length > 0) {
+    const totalCount = pr.comments?.totalCount ?? 0;
+    const skipped = totalCount - (comments?.length ?? 0);
+    text += `
+============ Comments ============
+`;
+    if (skipped > 0) {
+      text += `${skipped} comment${skipped > 1 ? "s" : ""} skipped
+`;
+    }
+    for (const comment of comments) {
+      if (!comment) {
+        continue;
+      }
+      if (comment.minimizedReason) {
+        continue;
+      }
+      const author = comment.author?.login ?? "unknown";
+      text += `${comment.createdAt} @${author}:
+${comment.body}
+========================
+`;
+    }
+  }
+  const reviews = pr.reviews?.nodes;
+  if (reviews && reviews.length > 0) {
+    const totalCount = pr.reviews?.totalCount ?? 0;
+    const skipped = totalCount - (reviews?.length ?? 0);
+    if (skipped > 0) {
+      text += `${skipped} review${skipped > 1 ? "s" : ""} skipped
+`;
+    }
+    text += `
+============ Reviews ============
+`;
+    for (const review of reviews) {
+      if (!review) {
+        continue;
+      }
+      const author = review.author?.login ?? "unknown";
+      text += `${review.createdAt} @${author}:
+${review.body}
+`;
+      const reviewComments = review.comments?.nodes;
+      if (reviewComments && reviewComments.length > 0) {
+        text += `
+------------ Review Comments ------------
+`;
+        let lastDiff;
+        for (const comment of reviewComments) {
+          if (!comment) {
+            continue;
+          }
+          if (comment.minimizedReason) {
+            continue;
+          }
+          const author2 = comment.author?.login ?? "unknown";
+          if (comment.diffHunk === lastDiff) {
+            text += `${comment.createdAt} @${author2}:
+${comment.body}
+-----------------------
+            `;
+          } else {
+            text += `${comment.createdAt} @${author2}:
+Diff:
+${comment.diffHunk}
+Comment:
+${comment.body}
+-----------------------
+`;
+          }
+        }
+      }
+    }
+    text += `========================
+`;
+  }
+  return text;
+}
+
+// src/action.ts
 async function getInputs() {
   const issueNumberStr = core.getInput("issue_number");
   const prNumberStr = core.getInput("pr_number");
@@ -22737,7 +22964,7 @@ async function getInputs() {
     issueNumber: issueNumberStr ? Number.parseInt(issueNumberStr) : undefined,
     prNumber: prNumberStr ? Number.parseInt(prNumberStr) : undefined,
     task: core.getInput("task"),
-    githubToken: core.getInput("github_token")
+    githubToken: core.getInput("github_token", { required: true })
   };
 }
 var validateInputs = (inputs) => {
@@ -22748,53 +22975,6 @@ var validateInputs = (inputs) => {
     throw new Error("One of issue_number, pr_number, or task must be provided");
   }
 };
-async function getTaskFromIssue(issueNumber, octokit) {
-  const { owner, repo } = github.context.repo;
-  const { data: issue } = await octokit.rest.issues.get({
-    owner,
-    repo,
-    issue_number: issueNumber
-  });
-  const { data: comments } = await octokit.rest.issues.listComments({
-    owner,
-    repo,
-    issue_number: issueNumber
-  });
-  const issueData = {
-    number: issue.number,
-    title: issue.title,
-    body: issue.body,
-    author: issue.user?.login,
-    created_at: issue.created_at,
-    comments: comments.map((c) => ({
-      author: c.user?.login,
-      body: c.body,
-      created_at: c.created_at
-    }))
-  };
-  const commentsText = issueData.comments.map((comment) => `@${comment.author} at ${comment.created_at}:
-${comment.body}
-`).join(`
-
-`);
-  return `Issue #${issueData.number}: ${issueData.title}
-Author: @${issueData.author}
-Created: ${issueData.created_at}
-
-${issueData.body}
-
-Comments:
-${commentsText}`;
-}
-async function getTaskFromPR(prNumber, octokit) {
-  const { owner, repo } = github.context.repo;
-  const { data: pr } = await octokit.rest.pulls.get({
-    owner,
-    repo,
-    pull_number: prNumber
-  });
-  return pr.body || "";
-}
 async function createPullRequest(octokit, branchName, title, body) {
   const { owner, repo } = github.context.repo;
   return await octokit.rest.pulls.create({
@@ -22811,11 +22991,12 @@ async function run() {
     const inputs = await getInputs();
     validateInputs(inputs);
     const octokit = github.getOctokit(inputs.githubToken);
+    const { owner, repo } = github.context.repo;
     let taskDescription = inputs.task;
     if (inputs.issueNumber) {
-      taskDescription = await getTaskFromIssue(inputs.issueNumber, octokit);
+      taskDescription = await fetchIssue(owner, repo, inputs.issueNumber, octokit);
     } else if (inputs.prNumber) {
-      taskDescription = await getTaskFromPR(inputs.prNumber, octokit);
+      taskDescription = await fetchPR(owner, repo, inputs.prNumber, octokit);
     }
     if (!taskDescription) {
       throw new Error("No task description provided");

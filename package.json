@@ -7,19 +7,22 @@
   "version": "1.0.0",
   "description": "GitHub Action for Polka Codes integration",
   "scripts": {
-    "build": "bun build ./src/main.ts --outfile dist/index.js --target node",
+    "build": "bun codegen && bun build ./src/main.ts --outfile dist/index.js --target node",
     "lint": "biome check .",
     "fix": "biome check --write",
     "check": "tsc --noEmit && biome check .",
     "typecheck": "tsc --noEmit",
-    "prepare": "husky"
+    "prepare": "husky",
+    "codegen": "graphql-codegen"
   },
   "dependencies": {
     "@actions/core": "^1.11.1",
-    "@actions/github": "^6.0.0"
+    "@actions/github": "^6.0.0",
+    "@octokit/core": "5.2.0"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
+    "@graphql-codegen/cli": "^5.0.4",
     "@types/node": "22.13.1",
     "bun-types": "^1.2.0",
     "husky": "^9.1.7",

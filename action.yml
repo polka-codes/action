@@ -16,7 +16,7 @@ inputs:
     required: false
   github_token:
     description: 'GitHub token for authentication'
-    required: false
+    required: true
 outputs:
   pull_request_number:
     description: 'The number of the created pull request'

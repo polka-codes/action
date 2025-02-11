@@ -4,6 +4,7 @@
 import { execSync } from 'node:child_process'
 import * as core from '@actions/core'
 import * as github from '@actions/github'
+import { fetchIssue, fetchPR } from './github'
 
 interface ActionInputs {
   issueNumber?: number
@@ -22,7 +23,7 @@ async function getInputs(): Promise<ActionInputs> {
     issueNumber: issueNumberStr ? Number.parseInt(issueNumberStr) : undefined,
     prNumber: prNumberStr ? Number.parseInt(prNumberStr) : undefined,
     task: core.getInput('task'),
-    githubToken: core.getInput('github_token'),
+    githubToken: core.getInput('github_token', { required: true }),
   }
 }
 
@@ -34,55 +35,6 @@ const validateInputs = (inputs: ActionInputs) => {
   if (!inputs.issueNumber && !inputs.prNumber && !inputs.task) {
     throw new Error('One of issue_number, pr_number, or task must be provided')
   }
-}
-
-async function getTaskFromIssue(issueNumber: number, octokit: Octokit) {
-  const { owner, repo } = github.context.repo
-  const { data: issue } = await octokit.rest.issues.get({
-    owner,
-    repo,
-    issue_number: issueNumber,
-  })
-
-  const { data: comments } = await octokit.rest.issues.listComments({
-    owner,
-    repo,
-    issue_number: issueNumber,
-  })
-
-  const issueData = {
-    number: issue.number,
-    title: issue.title,
-    body: issue.body,
-    author: issue.user?.login,
-    created_at: issue.created_at,
-    comments: comments.map((c) => ({
-      author: c.user?.login,
-      body: c.body,
-      created_at: c.created_at,
-    })),
-  }
-
-  const commentsText = issueData.comments.map((comment) => `@${comment.author} at ${comment.created_at}:\n${comment.body}\n`).join('\n\n')
-
-  return `Issue #${issueData.number}: ${issueData.title}
-Author: @${issueData.author}
-Created: ${issueData.created_at}
-
-${issueData.body}
-
-Comments:
-${commentsText}`
-}
-
-async function getTaskFromPR(prNumber: number, octokit: Octokit) {
-  const { owner, repo } = github.context.repo
-  const { data: pr } = await octokit.rest.pulls.get({
-    owner,
-    repo,
-    pull_number: prNumber,
-  })
-  return pr.body || ''
 }
 
 async function createPullRequest(octokit: Octokit, branchName: string, title: string, body: string) {
@@ -105,12 +57,14 @@ export async function run(): Promise<void> {
     validateInputs(inputs)
     const octokit = github.getOctokit(inputs.githubToken)
 
+    const { owner, repo } = github.context.repo
+
     // Get task description
     let taskDescription = inputs.task
     if (inputs.issueNumber) {
-      taskDescription = await getTaskFromIssue(inputs.issueNumber, octokit)
+      taskDescription = await fetchIssue(owner, repo, inputs.issueNumber, octokit)
     } else if (inputs.prNumber) {
-      taskDescription = await getTaskFromPR(inputs.prNumber, octokit)
+      taskDescription = await fetchPR(owner, repo, inputs.prNumber, octokit)
     }
 
     if (!taskDescription) {
