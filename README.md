@@ -1,5 +1,7 @@
 # Polka Codes GitHub Action
 
+[![Polka Codes](https://img.shields.io/badge/Powered%20by-Polka%20Codes-purple)](https://github.com/polka-codes/polka-codes)
+
 A GitHub Action that integrates with [Polka Codes](https://github.com/polka-codes/polka-codes) to analyze code and provide automated feedback through GitHub issues and pull requests. This action enables seamless code analysis, generation, and review automation in your GitHub workflows.
 
 ## Overview
@@ -9,6 +11,31 @@ This action allows you to:
 - Apply custom code analysis rules and configurations
 - Generate automated code improvements and suggestions
 - Create pull requests with proposed changes
+
+## How It Works
+
+The action follows a structured workflow to process tasks and generate code changes:
+
+1. **Task Acquisition**
+   - Fetches task description from issues or pull requests using GitHub API
+   - Supports direct task input through workflow dispatch
+   - Validates inputs to ensure proper task context
+
+2. **Branch Management**
+   - For new tasks: Creates a new branch with format `polka/task-{timestamp}`
+   - For PRs: Checks out the existing PR branch
+   - Ensures isolated work environment for each task
+
+3. **Task Processing**
+   - Executes Polka Codes CLI with provided configuration
+   - Applies custom rules and conventions from `.polkacodes.yml`
+   - Generates code changes based on task requirements
+
+4. **Change Management**
+   - Automatically stages and commits changes
+   - Pushes to the appropriate branch
+   - Creates or updates pull requests
+   - Links PRs to original issues when applicable
 
 ## Installation
 
@@ -66,42 +93,42 @@ excludeFiles:
   - .env
 ```
 
-## Usage Examples
+## CLI Integration
 
-### Process Pull Requests
+The action seamlessly integrates with the Polka Codes CLI to process tasks:
+
+1. **CLI Installation**
+   - Automatically installs latest CLI version using `npx @polka-codes/cli@latest`
+   - No manual CLI installation required
+
+2. **Configuration Loading**
+   - Loads multiple config files if specified (comma-separated paths)
+   - Passes config to CLI using `--config` flag
+
+3. **CLI Commands**
+   - Processes tasks: `npx @polka-codes/cli@latest [config] [task]`
+   - Generates commits: `npx @polka-codes/cli@latest [config] commit`
+   - Creates PRs: `npx @polka-codes/cli@latest [config] pr`
+
+4. **Custom Scripts**
+   - Executes repository-specific scripts defined in config
+   - Supports various development tasks (testing, linting, etc.)
+
+## Real-World Examples
+
+### Code Refactoring
 
 ```yaml
-name: Polka Codes PR Review
-on:
-  pull_request:
-    types: [opened, synchronize]
-
-jobs:
-  review:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: polka-codes/action@v1
-        with:
-          pr_number: ${{ github.event.pull_request.number }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          POLKA_API_KEY: ${{ secrets.POLKA_API_KEY }}
-```
-
-### Process Issues
-
-```yaml
-name: Polka Codes Issue Processing
+name: Refactor Code
 on:
   issues:
-    types: [opened, edited]
+    types: [opened]
+    labels: ['refactor']
 
 jobs:
-  process:
+  refactor:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
       - uses: polka-codes/action@v1
         with:
           issue_number: ${{ github.event.issue.number }}
@@ -110,51 +137,105 @@ jobs:
           POLKA_API_KEY: ${{ secrets.POLKA_API_KEY }}
 ```
 
-### Custom Configuration
+Example task: "Refactor authentication middleware to use TypeScript classes and improve error handling"
+
+### Bug Fixing
 
 ```yaml
-name: Polka Codes Custom Config
+name: Fix Bugs
 on:
-  pull_request:
-    types: [opened, synchronize]
+  issues:
+    types: [opened]
+    labels: ['bug']
 
 jobs:
-  analyze:
+  fix:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
       - uses: polka-codes/action@v1
         with:
-          pr_number: ${{ github.event.pull_request.number }}
-          config: .polkacodes.yml,custom.polkacodes.yml
+          issue_number: ${{ github.event.issue.number }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           POLKA_API_KEY: ${{ secrets.POLKA_API_KEY }}
 ```
 
-### Direct Task Processing
+Example task: "Fix race condition in async data fetching causing intermittent test failures"
+
+### Feature Implementation
 
 ```yaml
-name: Polka Codes Task
+name: Implement Feature
 on:
-  workflow_dispatch:
-    inputs:
-      task:
-        description: 'Task description'
-        required: true
+  issues:
+    types: [opened]
+    labels: ['feature']
 
 jobs:
-  process:
+  implement:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
       - uses: polka-codes/action@v1
         with:
-          task: ${{ github.event.inputs.task }}
+          issue_number: ${{ github.event.issue.number }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           POLKA_API_KEY: ${{ secrets.POLKA_API_KEY }}
 ```
+
+Example task: "Add rate limiting middleware with Redis backend and configurable thresholds"
+
+### Documentation Updates
+
+```yaml
+name: Update Docs
+on:
+  issues:
+    types: [opened]
+    labels: ['documentation']
+
+jobs:
+  document:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: polka-codes/action@v1
+        with:
+          issue_number: ${{ github.event.issue.number }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          POLKA_API_KEY: ${{ secrets.POLKA_API_KEY }}
+```
+
+Example task: "Update API documentation with new endpoints and improve code examples"
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Invalid Configuration**
+   - Ensure `.polkacodes.yml` is properly formatted
+   - Verify all referenced scripts exist
+   - Check for valid file paths in excludeFiles
+
+2. **Permission Errors**
+   - Verify GITHUB_TOKEN has required permissions
+   - Ensure branch protection rules allow bot commits
+   - Check repository access settings
+
+3. **Task Processing Failures**
+   - Provide clear, specific task descriptions
+   - Check for conflicting rules in config
+   - Verify all required dependencies are installed
+
+4. **Branch Conflicts**
+   - Pull latest changes before processing tasks
+   - Avoid concurrent tasks on same files
+   - Resolve conflicts manually if needed
+
+5. **CLI Integration Issues**
+   - Clear npx cache if CLI fails to update
+   - Verify network access for CLI installation
+   - Check for conflicting global CLI installations
 
 ---
 *This README is generated by polka.codes*
