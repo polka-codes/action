@@ -13,6 +13,25 @@ This action allows you to:
 - Create pull requests with proposed changes
 
 
+## Security Considerations
+
+> ⚠️ **Important Security Warning**
+>
+> This action processes comments as triggers for automated operations. This introduces potential security considerations:
+>
+> - Comments in issues and PRs are used as input for the action
+> - Malicious content in comments could potentially be executed or processed
+> - Without proper restrictions, any user who can comment could trigger the action
+>
+> **Recommended Security Measures:**
+>
+> 1. **Restrict Permissions**: Configure repository permissions to control who can trigger the action
+> 2. **Use Controlled Triggers**: Consider using `workflow_dispatch` instead of comment-based triggers for more controlled execution
+> 3. **Label Protection**: If using label-based triggers, restrict who can apply/remove relevant labels
+> 4. **Review Automation**: Regularly audit automated operations and their triggers
+>
+> Always follow the principle of least privilege when configuring this action.
+
 ## Installation
 
 Add the action to your GitHub workflow:
