@@ -39,8 +39,14 @@ Add the action to your GitHub workflow:
   with:
     # Configure inputs based on your needs
     issue_number: ${{ github.event.issue.number }}
+	task: Implement the issue
+	# or
+	# pr_number: ${{ github.event.pull_request.number }}
+	# task: Review the PR and fix any issues, improve documentation, improve test coverage if necessary.
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+	POLKA_API_PROVIDER: openrouter
+	POLKA_MODEL: deepseek/deepseek-chat
     POLKA_API_KEY: ${{ secrets.POLKA_API_KEY }}
 ```
 
