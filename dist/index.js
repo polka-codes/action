@@ -22990,12 +22990,21 @@ async function run() {
     if (!taskDescription) {
       throw new Error("No task description provided");
     }
-    const branchName = `polka/task-${Date.now()}`;
-    spawnSync("git", ["checkout", "-b", branchName], { stdio: "inherit" });
+    let branchName = "";
+    if (inputs.prNumber) {
+      spawnSync("gh", ["pr", "checkout", inputs.prNumber.toString()], { stdio: "inherit" });
+    } else {
+      branchName = `polka/task-${Date.now()}`;
+      spawnSync("git", ["checkout", "-b", branchName], { stdio: "inherit" });
+    }
     spawnSync("npx", ["@polka-codes/cli@latest", taskDescription], { stdio: "inherit" });
     spawnSync("git", ["add", "."], { stdio: "inherit" });
     spawnSync("npx", ["@polka-codes/cli@latest", "commit"], { stdio: "inherit" });
-    spawnSync("git", ["push", "origin", branchName], { stdio: "inherit" });
+    if (branchName) {
+      spawnSync("git", ["push", "origin", branchName], { stdio: "inherit" });
+    } else {
+      spawnSync("git", ["push"], { stdio: "inherit" });
+    }
     spawnSync("npx", ["@polka-codes/cli@latest", "pr"], { stdio: "inherit" });
   } catch (error) {
     if (error instanceof Error) {

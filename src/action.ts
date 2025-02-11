@@ -56,17 +56,28 @@ export async function run(): Promise<void> {
       throw new Error('No task description provided')
     }
 
-    // Create a new branch for changes
-    const branchName = `polka/task-${Date.now()}`
-    spawnSync('git', ['checkout', '-b', branchName], { stdio: 'inherit' })
+    let branchName = ''
 
-    // Process task using Polka CLI
+    if (inputs.prNumber) {
+      // Checkout existing PR branch
+      spawnSync('gh', ['pr', 'checkout', inputs.prNumber.toString()], { stdio: 'inherit' })
+    } else {
+      // Create a new branch for changes
+      branchName = `polka/task-${Date.now()}`
+      spawnSync('git', ['checkout', '-b', branchName], { stdio: 'inherit' })
+    }
+
+    // Process task using Polka Codes CLI
     spawnSync('npx', ['@polka-codes/cli@latest', taskDescription], { stdio: 'inherit' })
 
     // Commit and push changes
     spawnSync('git', ['add', '.'], { stdio: 'inherit' })
     spawnSync('npx', ['@polka-codes/cli@latest', 'commit'], { stdio: 'inherit' })
-    spawnSync('git', ['push', 'origin', branchName], { stdio: 'inherit' })
+    if (branchName) {
+      spawnSync('git', ['push', 'origin', branchName], { stdio: 'inherit' })
+    } else {
+      spawnSync('git', ['push'], { stdio: 'inherit' })
+    }
     spawnSync('npx', ['@polka-codes/cli@latest', 'pr'], { stdio: 'inherit' })
   } catch (error) {
     if (error instanceof Error) {
