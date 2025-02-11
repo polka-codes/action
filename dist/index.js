@@ -22964,7 +22964,8 @@ async function getInputs() {
     issueNumber: issueNumberStr ? Number.parseInt(issueNumberStr) : undefined,
     prNumber: prNumberStr ? Number.parseInt(prNumberStr) : undefined,
     task: core.getInput("task"),
-    githubToken: core.getInput("github_token", { required: true })
+    githubToken: core.getInput("github_token", { required: true }),
+    config: core.getInput("config")
   };
 }
 var validateInputs = (inputs) => {
@@ -22990,6 +22991,11 @@ async function run() {
     if (!taskDescription) {
       throw new Error("No task description provided");
     }
+    let configArgs = [];
+    if (inputs.config) {
+      const configPaths = inputs.config.split(",");
+      configArgs = configPaths.flatMap((path) => ["--config", path]);
+    }
     let branchName = "";
     if (inputs.prNumber) {
       spawnSync("gh", ["pr", "checkout", inputs.prNumber.toString()], { stdio: "inherit" });
@@ -22997,15 +23003,15 @@ async function run() {
       branchName = `polka/task-${Date.now()}`;
       spawnSync("git", ["checkout", "-b", branchName], { stdio: "inherit" });
     }
-    spawnSync("npx", ["@polka-codes/cli@latest", taskDescription], { stdio: "inherit" });
+    spawnSync("npx", ["@polka-codes/cli@latest", ...configArgs, taskDescription], { stdio: "inherit" });
     spawnSync("git", ["add", "."], { stdio: "inherit" });
-    spawnSync("npx", ["@polka-codes/cli@latest", "commit"], { stdio: "inherit" });
+    spawnSync("npx", ["@polka-codes/cli@latest", ...configArgs, "commit"], { stdio: "inherit" });
     if (branchName) {
       spawnSync("git", ["push", "origin", branchName], { stdio: "inherit" });
     } else {
       spawnSync("git", ["push"], { stdio: "inherit" });
     }
-    spawnSync("npx", ["@polka-codes/cli@latest", "pr"], { stdio: "inherit" });
+    spawnSync("npx", ["@polka-codes/cli@latest", ...configArgs, "pr"], { stdio: "inherit" });
   } catch (error) {
     if (error instanceof Error) {
       core.setFailed(error.message);

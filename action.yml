@@ -17,6 +17,9 @@ inputs:
   github_token:
     description: 'GitHub token for authentication'
     required: true
+  config:
+    description: 'Path to the polka.codes config file. Can be a comma-separated list of paths'
+    required: false
 runs:
   using: 'node20'
   main: 'dist/index.js'
