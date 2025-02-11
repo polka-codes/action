@@ -112,7 +112,9 @@ export async function run(): Promise<void> {
       core.info('Pushing to current branch')
       spawnSync('git', ['push'], { stdio: 'inherit' })
     }
-    spawnSync('npx', ['@polka-codes/cli@latest', ...configArgs, 'pr'], { stdio: 'inherit' })
+
+    const extraContent = inputs.issueNumber ? [`Closes #${inputs.issueNumber}`] : []
+    spawnSync('npx', ['@polka-codes/cli@latest', ...configArgs, 'pr', ...extraContent], { stdio: 'inherit' })
   } catch (error) {
     if (error instanceof Error) {
       core.error(`Failed with error: ${error.message}`)
