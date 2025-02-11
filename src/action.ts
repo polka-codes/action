@@ -10,7 +10,6 @@ interface ActionInputs {
   issueNumber?: number
   prNumber?: number
   task?: string
-  githubToken: string
   config?: string
 }
 
@@ -23,7 +22,6 @@ async function getInputs(): Promise<ActionInputs> {
     issueNumber: issueNumberStr ? Number.parseInt(issueNumberStr) : undefined,
     prNumber: prNumberStr ? Number.parseInt(prNumberStr) : undefined,
     task: core.getInput('task'),
-    githubToken: core.getInput('github_token', { required: true }),
     config: core.getInput('config'),
   }
 
@@ -51,7 +49,7 @@ export async function run(): Promise<void> {
     // Get inputs
     const inputs = await getInputs()
     validateInputs(inputs)
-    const octokit = github.getOctokit(inputs.githubToken)
+    const octokit = github.getOctokit(process.env.GITHUB_TOKEN ?? '')
 
     const { owner, repo } = github.context.repo
     core.info(`Processing repository: ${owner}/${repo}`)

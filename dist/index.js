@@ -22965,7 +22965,6 @@ async function getInputs() {
     issueNumber: issueNumberStr ? Number.parseInt(issueNumberStr) : undefined,
     prNumber: prNumberStr ? Number.parseInt(prNumberStr) : undefined,
     task: core.getInput("task"),
-    githubToken: core.getInput("github_token", { required: true }),
     config: core.getInput("config")
   };
   core.debug(`Received inputs: issue=${issueNumberStr}, pr=${prNumberStr}, task=${inputs.task}, config=${inputs.config}`);
@@ -22988,7 +22987,7 @@ async function run() {
   try {
     const inputs = await getInputs();
     validateInputs(inputs);
-    const octokit = github.getOctokit(inputs.githubToken);
+    const octokit = github.getOctokit(process.env.GITHUB_TOKEN ?? "");
     const { owner, repo } = github.context.repo;
     core.info(`Processing repository: ${owner}/${repo}`);
     core.info("Fetching task description");
