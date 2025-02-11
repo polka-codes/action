@@ -59,4 +59,5 @@ fragment ReviewCommentFields on PullRequestReviewComment {
   createdAt
   diffHunk
   minimizedReason
+  outdated
 }

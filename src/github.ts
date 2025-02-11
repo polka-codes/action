@@ -123,7 +123,7 @@ ${review.body}
           if (!comment) {
             continue
           }
-          if (comment.minimizedReason) {
+          if (comment.minimizedReason || comment.outdated) {
             continue
           }
 

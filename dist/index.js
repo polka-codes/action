@@ -22819,6 +22819,7 @@ fragment ReviewCommentFields on PullRequestReviewComment {
   createdAt
   diffHunk
   minimizedReason
+  outdated
 }
 `;
 
@@ -22929,7 +22930,7 @@ ${review.body}
           if (!comment) {
             continue;
           }
-          if (comment.minimizedReason) {
+          if (comment.minimizedReason || comment.outdated) {
             continue;
           }
           const author2 = comment.author?.login ?? "unknown";
