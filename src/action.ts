@@ -56,7 +56,7 @@ export async function run(): Promise<void> {
 
     // Get task description
     core.info('Fetching task description')
-    let taskDescription = inputs.task
+    let taskDescription = ''
     if (inputs.issueNumber) {
       core.info(`Fetching issue #${inputs.issueNumber}`)
       taskDescription = await fetchIssue(owner, repo, inputs.issueNumber, octokit)
@@ -65,6 +65,9 @@ export async function run(): Promise<void> {
       core.info(`Fetching PR #${inputs.prNumber}`)
       taskDescription = await fetchPR(owner, repo, inputs.prNumber, octokit)
       core.debug(`Fetched PR description: ${taskDescription}`)
+    }
+    if (inputs.task) {
+      taskDescription = `${inputs.task}\n\n${taskDescription}`
     }
 
     if (!taskDescription) {

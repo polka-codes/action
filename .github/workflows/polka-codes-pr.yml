@@ -45,7 +45,6 @@ jobs:
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
       - name: Process PR
-        id: process
         uses: polka-codes/action@master
         with:
           pr_number: ${{ github.event.inputs.pr_number }}

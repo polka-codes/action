@@ -50,7 +50,6 @@ jobs:
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
       - name: Process issue
-        id: process
         uses: polka-codes/action@master
         with:
           issue_number: ${{ github.event.issue.number || github.event.inputs.issue_number }}
