@@ -17,6 +17,10 @@ inputs:
   config:
     description: 'Path to the polka.codes config file. Can be a comma-separated list of paths'
     required: false
+  cli_version:
+    description: 'Version of @polka-codes/cli to use'
+    required: false
+    default: 'latest'
 runs:
   using: 'node20'
   main: 'dist/index.js'

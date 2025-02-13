@@ -11,6 +11,7 @@ interface ActionInputs {
   prNumber?: number
   task?: string
   config?: string
+  cliVersion: string
 }
 
 async function getInputs(): Promise<ActionInputs> {
@@ -23,6 +24,7 @@ async function getInputs(): Promise<ActionInputs> {
     prNumber: prNumberStr ? Number.parseInt(prNumberStr) : undefined,
     task: core.getInput('task'),
     config: core.getInput('config'),
+    cliVersion: core.getInput('cli_version'),
   }
 
   core.debug(`Received inputs: issue=${issueNumberStr}, pr=${prNumberStr}, task=${inputs.task}, config=${inputs.config}`)
@@ -101,12 +103,12 @@ export async function run(): Promise<void> {
 
     // Process task using Polka Codes CLI
     core.info('Executing Polka Codes CLI')
-    spawnSync('npx', ['@polka-codes/cli@latest', ...configArgs, taskDescription], { stdio: 'inherit' })
+    spawnSync('npx', [`@polka-codes/cli@${inputs.cliVersion}`, ...configArgs, taskDescription], { stdio: 'inherit' })
 
     // Commit and push changes
     core.info('Committing changes')
     spawnSync('git', ['add', '.'], { stdio: 'inherit' })
-    spawnSync('npx', ['@polka-codes/cli@latest', ...configArgs, 'commit'], { stdio: 'inherit' })
+    spawnSync('npx', [`@polka-codes/cli@${inputs.cliVersion}`, ...configArgs, 'commit'], { stdio: 'inherit' })
     core.info('Pushing changes')
     if (branchName) {
       core.info(`Pushing to branch: ${branchName}`)
@@ -117,7 +119,7 @@ export async function run(): Promise<void> {
     }
 
     const extraContent = inputs.issueNumber ? [`Closes #${inputs.issueNumber}`] : []
-    spawnSync('npx', ['@polka-codes/cli@latest', ...configArgs, 'pr', ...extraContent], { stdio: 'inherit' })
+    spawnSync('npx', [`@polka-codes/cli@${inputs.cliVersion}`, ...configArgs, 'pr', ...extraContent], { stdio: 'inherit' })
   } catch (error) {
     if (error instanceof Error) {
       core.error(`Failed with error: ${error.message}`)
