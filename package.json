@@ -4,7 +4,7 @@
   "author": "github@polka.codes",
   "module": "src/main.ts",
   "type": "module",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "GitHub Action for Polka Codes integration",
   "scripts": {
     "build": "bun build ./src/main.ts --outfile dist/index.js --target node",
