@@ -4,7 +4,7 @@
 import { spawnSync } from 'node:child_process'
 import * as core from '@actions/core'
 import * as github from '@actions/github'
-import { fetchIssue, fetchPR } from './github'
+import { fetchIssue, fetchPR } from '@polka-codes/github'
 
 interface ActionInputs {
   issueNumber?: number
@@ -61,11 +61,11 @@ export async function run(): Promise<void> {
     let taskDescription = ''
     if (inputs.issueNumber) {
       core.info(`Fetching issue #${inputs.issueNumber}`)
-      taskDescription = await fetchIssue(owner, repo, inputs.issueNumber, octokit)
+      taskDescription = await fetchIssue({ owner, repo, issueNumber: inputs.issueNumber, octokit })
       core.debug(`Fetched issue description: ${taskDescription}`)
     } else if (inputs.prNumber) {
       core.info(`Fetching PR #${inputs.prNumber}`)
-      taskDescription = await fetchPR(owner, repo, inputs.prNumber, octokit)
+      taskDescription = await fetchPR({ owner, repo, prNumber: inputs.prNumber, octokit })
       core.debug(`Fetched PR description: ${taskDescription}`)
     }
     if (inputs.task) {
