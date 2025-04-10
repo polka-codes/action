@@ -2,4 +2,5 @@
 # Mark generated files to be excluded from GitHub language statistics and diffs
 
 bun.lock linguist-generated=true
+bun.lock -diff
 dist/** linguist-generated=true
