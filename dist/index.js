@@ -35022,6 +35022,7 @@ var validateInputs = (inputs) => {
       core.error(error2);
       throw new Error(error2);
     }
+    return;
   }
   if (inputs.issueNumber && inputs.prNumber) {
     const error2 = "Only one of issue_number or pr_number can be provided";

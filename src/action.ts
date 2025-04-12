@@ -46,6 +46,7 @@ const validateInputs = (inputs: ActionInputs) => {
       core.error(error)
       throw new Error(error)
     }
+    return
   }
 
   if (inputs.issueNumber && inputs.prNumber) {
