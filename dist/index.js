@@ -35007,13 +35007,22 @@ async function getInputs() {
     prNumber: prNumberStr ? Number.parseInt(prNumberStr) : undefined,
     task: core.getInput("task"),
     config: core.getInput("config"),
-    cliVersion: core.getInput("cli_version")
+    cliVersion: core.getInput("cli_version"),
+    runnerPayload: core.getInput("runner_payload"),
+    runnerApiUrl: core.getInput("runner_api_url")
   };
   core.debug(`Received inputs: issue=${issueNumberStr}, pr=${prNumberStr}, task=${inputs.task}, config=${inputs.config}`);
   return inputs;
 }
 var validateInputs = (inputs) => {
   core.debug("Validating inputs");
+  if (inputs.runnerPayload) {
+    if (inputs.issueNumber || inputs.prNumber || inputs.task) {
+      const error2 = "issue_number, pr_number, or task cannot be used when used as remote runner";
+      core.error(error2);
+      throw new Error(error2);
+    }
+  }
   if (inputs.issueNumber && inputs.prNumber) {
     const error2 = "Only one of issue_number or pr_number can be provided";
     core.error(error2);
@@ -35025,10 +35034,27 @@ var validateInputs = (inputs) => {
     throw new Error(error2);
   }
 };
+var remoteRunner = async (inputs) => {
+  const payload = JSON.parse(inputs.runnerPayload);
+  const oidcToken = await core.getIDToken("https://polka.codes");
+  spawnSync("npx", [
+    `@polka-codes/runner@${inputs.cliVersion}`,
+    "--task-id",
+    payload.taskId,
+    "--session-token",
+    payload.sessionToken,
+    "--github-token",
+    oidcToken
+  ], { stdio: "inherit" });
+};
 async function run() {
   try {
     const inputs = await getInputs();
     validateInputs(inputs);
+    if (inputs.runnerPayload) {
+      await remoteRunner({ runnerPayload: inputs.runnerPayload, cliVersion: inputs.cliVersion, runnerApiUrl: inputs.runnerApiUrl });
+      return;
+    }
     const octokit = github.getOctokit(process.env.GITHUB_TOKEN ?? "");
     const { owner, repo } = github.context.repo;
     core.info(`Processing repository: ${owner}/${repo}`);

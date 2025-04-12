@@ -12,6 +12,8 @@ interface ActionInputs {
   task?: string
   config?: string
   cliVersion: string
+  runnerPayload?: string
+  runnerApiUrl: string
 }
 
 async function getInputs(): Promise<ActionInputs> {
@@ -25,6 +27,8 @@ async function getInputs(): Promise<ActionInputs> {
     task: core.getInput('task'),
     config: core.getInput('config'),
     cliVersion: core.getInput('cli_version'),
+    runnerPayload: core.getInput('runner_payload'),
+    runnerApiUrl: core.getInput('runner_api_url'),
   }
 
   core.debug(`Received inputs: issue=${issueNumberStr}, pr=${prNumberStr}, task=${inputs.task}, config=${inputs.config}`)
@@ -33,6 +37,17 @@ async function getInputs(): Promise<ActionInputs> {
 
 const validateInputs = (inputs: ActionInputs) => {
   core.debug('Validating inputs')
+
+  if (inputs.runnerPayload) {
+    // remote runner mode
+
+    if (inputs.issueNumber || inputs.prNumber || inputs.task) {
+      const error = 'issue_number, pr_number, or task cannot be used when used as remote runner'
+      core.error(error)
+      throw new Error(error)
+    }
+  }
+
   if (inputs.issueNumber && inputs.prNumber) {
     const error = 'Only one of issue_number or pr_number can be provided'
     core.error(error)
@@ -46,11 +61,35 @@ const validateInputs = (inputs: ActionInputs) => {
   }
 }
 
+const remoteRunner = async (inputs: { runnerPayload: string; cliVersion: string; runnerApiUrl: string }) => {
+  const payload = JSON.parse(inputs.runnerPayload)
+  const oidcToken = await core.getIDToken('https://polka.codes')
+  spawnSync(
+    'npx',
+    [
+      `@polka-codes/runner@${inputs.cliVersion}`,
+      '--task-id',
+      payload.taskId,
+      '--session-token',
+      payload.sessionToken,
+      '--github-token',
+      oidcToken,
+    ],
+    { stdio: 'inherit' },
+  )
+}
+
 export async function run(): Promise<void> {
   try {
     // Get inputs
     const inputs = await getInputs()
     validateInputs(inputs)
+
+    if (inputs.runnerPayload) {
+      await remoteRunner({ runnerPayload: inputs.runnerPayload, cliVersion: inputs.cliVersion, runnerApiUrl: inputs.runnerApiUrl })
+      return
+    }
+
     const octokit = github.getOctokit(process.env.GITHUB_TOKEN ?? '')
 
     const { owner, repo } = github.context.repo

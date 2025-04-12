@@ -21,6 +21,13 @@ inputs:
     description: 'Version of @polka-codes/cli to use'
     required: false
     default: 'latest'
+  runner_payload:
+    description: 'The runner payload. This is used when used as remote runner for polka.codes service'
+    required: false
+  runner_api_url:
+    description: 'The runner API URL. This is used when used as remote runner for polka.codes service'
+    default: 'https://api-dev.polka.codes'
+    required: false
 runs:
   using: 'node20'
   main: 'dist/index.js'
