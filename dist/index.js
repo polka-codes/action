@@ -35038,6 +35038,7 @@ var validateInputs = (inputs) => {
 var remoteRunner = async (inputs) => {
   const payload = JSON.parse(inputs.runnerPayload);
   if (payload.ref) {
+    spawnSync("git", ["fetch", "origin", payload.ref], { stdio: "inherit" });
     spawnSync("git", ["checkout", payload.ref], { stdio: "inherit" });
   }
   const oidcToken = await core.getIDToken("https://polka.codes");
