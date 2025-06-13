@@ -23516,8 +23516,10 @@ var require_extend = __commonJS((exports, module) => {
 
 // src/action.ts
 var core = __toESM(require_core(), 1);
+var import_exec = __toESM(require_exec(), 1);
 var github = __toESM(require_github(), 1);
 import { spawnSync } from "node:child_process";
+import { platform } from "node:os";
 
 // node_modules/ccount/index.js
 function ccount(value, character) {
@@ -28224,7 +28226,7 @@ function gfmTableToMarkdown(options) {
       { character: "\r", inConstruct: "tableCell" },
       { character: `
 `, inConstruct: "tableCell" },
-      { atBreak: true, character: "|", after: "[\t :-]" },
+      { atBreak: true, character: "|", after: "[	 :-]" },
       { character: "|", inConstruct: "tableCell" },
       { atBreak: true, character: ":", after: "-" },
       { atBreak: true, character: "-", after: "[:|-]" }
@@ -35054,6 +35056,18 @@ var remoteRunner = async (inputs) => {
 };
 async function run() {
   try {
+    if (platform() === "linux") {
+      core.info("Installing ripgrep on Linux runner");
+      try {
+        await import_exec.exec("sudo", ["apt-get", "update"]);
+        await import_exec.exec("sudo", ["apt-get", "install", "-y", "--no-install-recommends", "ripgrep"]);
+      } catch (error2) {
+        core.warning("Failed to install ripgrep, continuing without it.");
+        if (error2 instanceof Error) {
+          core.warning(error2.message);
+        }
+      }
+    }
     const inputs = await getInputs();
     validateInputs(inputs);
     if (inputs.runnerPayload) {

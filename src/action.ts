@@ -2,7 +2,9 @@
 // Main entry point for the Polka Codes GitHub Action
 
 import { spawnSync } from 'node:child_process'
+import { platform } from 'node:os'
 import * as core from '@actions/core'
+import { exec } from '@actions/exec'
 import * as github from '@actions/github'
 import { fetchIssue, fetchPR } from '@polka-codes/github'
 
@@ -86,6 +88,19 @@ const remoteRunner = async (inputs: { runnerPayload: string; cliVersion: string;
 
 export async function run(): Promise<void> {
   try {
+    if (platform() === 'linux') {
+      core.info('Installing ripgrep on Linux runner')
+      try {
+        await exec('sudo', ['apt-get', 'update'])
+        await exec('sudo', ['apt-get', 'install', '-y', '--no-install-recommends', 'ripgrep'])
+      } catch (error) {
+        core.warning('Failed to install ripgrep, continuing without it.')
+        if (error instanceof Error) {
+          core.warning(error.message)
+        }
+      }
+    }
+
     // Get inputs
     const inputs = await getInputs()
     validateInputs(inputs)
