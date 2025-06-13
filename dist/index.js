@@ -35057,14 +35057,19 @@ var remoteRunner = async (inputs) => {
 async function run() {
   try {
     if (platform() === "linux") {
-      core.info("Installing ripgrep on Linux runner");
       try {
-        await import_exec.exec("sudo", ["apt-get", "update"]);
-        await import_exec.exec("sudo", ["apt-get", "install", "-y", "--no-install-recommends", "ripgrep"]);
+        await import_exec.exec("rg", ["--version"], { silent: true });
+        core.debug("ripgrep is already installed.");
       } catch (error2) {
-        core.warning("Failed to install ripgrep, continuing without it.");
-        if (error2 instanceof Error) {
-          core.warning(error2.message);
+        core.info("ripgrep not found, installing it.");
+        try {
+          await import_exec.exec("sudo", ["apt-get", "update"]);
+          await import_exec.exec("sudo", ["apt-get", "install", "-y", "--no-install-recommends", "ripgrep"]);
+        } catch (installError) {
+          core.warning("Failed to install ripgrep, continuing without it.");
+          if (installError instanceof Error) {
+            core.warning(installError.message);
+          }
         }
       }
     }
