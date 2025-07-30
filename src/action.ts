@@ -8,6 +8,17 @@ import { exec } from '@actions/exec'
 import * as github from '@actions/github'
 import { fetchIssue, fetchPR } from '@polka-codes/github'
 
+interface SpecificReview {
+  file: string
+  lines: string // e.g., '10' or '10-15'
+  review: string
+}
+
+interface ReviewOutput {
+  overview: string
+  specificReviews: SpecificReview[]
+}
+
 interface ActionInputs {
   issueNumber?: number
   prNumber?: number
@@ -16,6 +27,7 @@ interface ActionInputs {
   cliVersion: string
   runnerPayload?: string
   runnerApiUrl: string
+  review: boolean
 }
 
 async function getInputs(): Promise<ActionInputs> {
@@ -31,9 +43,12 @@ async function getInputs(): Promise<ActionInputs> {
     cliVersion: core.getInput('cli_version'),
     runnerPayload: core.getInput('runner_payload'),
     runnerApiUrl: core.getInput('runner_api_url'),
+    review: core.getInput('review') === 'true',
   }
 
-  core.debug(`Received inputs: issue=${issueNumberStr}, pr=${prNumberStr}, task=${inputs.task}, config=${inputs.config}`)
+  core.debug(
+    `Received inputs: issue=${issueNumberStr}, pr=${prNumberStr}, task=${inputs.task}, config=${inputs.config}, review=${inputs.review}`,
+  )
   return inputs
 }
 
@@ -51,6 +66,16 @@ const validateInputs = (inputs: ActionInputs) => {
     return
   }
 
+  if (inputs.review) {
+    if (!inputs.prNumber && !inputs.issueNumber) {
+      throw new Error('Review mode requires either a "pr_number" or "issue_number" input.')
+    }
+    if (inputs.task) {
+      core.warning('The "task" input is ignored when in review mode.')
+    }
+    return
+  }
+
   if (inputs.issueNumber && inputs.prNumber) {
     const error = 'Only one of issue_number or pr_number can be provided'
     core.error(error)
@@ -62,6 +87,14 @@ const validateInputs = (inputs: ActionInputs) => {
     core.error(error)
     throw new Error(error)
   }
+}
+
+const sanitizePath = (path: string): string => {
+  const trimmedPath = path.trim()
+  if (trimmedPath.includes('..') || /[&;|`<>!$*]/.test(trimmedPath)) {
+    throw new Error(`Invalid or disallowed character in config path: ${trimmedPath}`)
+  }
+  return trimmedPath
 }
 
 const remoteRunner = async (inputs: { runnerPayload: string; cliVersion: string; runnerApiUrl: string }) => {
@@ -84,6 +117,132 @@ const remoteRunner = async (inputs: { runnerPayload: string; cliVersion: string;
     ],
     { stdio: 'inherit' },
   )
+}
+
+async function handleReview(inputs: ActionInputs): Promise<void> {
+  core.info('Starting review process...')
+  const octokit = github.getOctokit(process.env.GITHUB_TOKEN ?? '')
+  const { owner, repo } = github.context.repo
+
+  // Re-use config logic from the `run` function.
+  let configArgs: string[] = []
+  if (inputs.config) {
+    const configPaths = inputs.config.split(',').map(sanitizePath)
+    configArgs = configPaths.flatMap((path) => ['--config', path])
+    core.info(`Using config files for review: ${configPaths.join(', ')}`)
+  }
+
+  core.info('Executing review command...')
+  const reviewCommand = spawnSync('npx', [`@polka-codes/cli@${inputs.cliVersion}`, ...configArgs, 'review', '--json'], {
+    encoding: 'utf-8',
+  })
+
+  if (reviewCommand.error) {
+    throw new Error(`Failed to execute review command: ${reviewCommand.error.message}`)
+  }
+
+  if (reviewCommand.status !== 0) {
+    const errorMessage = `Review command failed with exit code ${reviewCommand.status}`
+    core.error(errorMessage)
+    core.error(`Review command stderr: ${reviewCommand.stderr}`)
+    if (reviewCommand.stdout) {
+      core.error(`Review command stdout: ${reviewCommand.stdout}`)
+    }
+    throw new Error(errorMessage)
+  }
+
+  const jsonOutput = reviewCommand.stdout
+  let reviewData: ReviewOutput
+  try {
+    reviewData = JSON.parse(jsonOutput)
+  } catch (e) {
+    core.error('Failed to parse JSON output from review command.')
+    if (e instanceof Error) {
+      core.error(`Parsing error: ${e.message}`)
+    }
+    core.debug(`Received output for debugging: ${jsonOutput}`)
+    throw new Error('Invalid JSON received from review command. Expected { "overview": string, "specificReviews": [...] }')
+  }
+
+  const { overview, specificReviews } = reviewData
+  const issue_number = inputs.prNumber ?? inputs.issueNumber
+
+  if (!issue_number) {
+    // This case is handled by `validateInputs`, but as a safeguard.
+    throw new Error('No PR or issue number found for review posting.')
+  }
+
+  const postGeneralComment = async (fallbackMessage?: string) => {
+    if (overview) {
+      core.info(`Posting overview as a general comment to #${issue_number}.`)
+      const body = fallbackMessage ? `${fallbackMessage}\n\n${overview}` : overview
+      await octokit.rest.issues.createComment({
+        owner,
+        repo,
+        issue_number,
+        body,
+      })
+    }
+  }
+
+  if (specificReviews.length > 0 && inputs.prNumber) {
+    core.info(`Posting a PR review with up to ${specificReviews.length} specific comments.`)
+    const { data: pr } = await octokit.rest.pulls.get({
+      owner,
+      repo,
+      pull_number: inputs.prNumber,
+    })
+
+    const parseLines = (lines: string): { line: number; start_line?: number } | null => {
+      const trimmedLines = lines.trim()
+      if (/^\d+$/.test(trimmedLines)) {
+        const line = Number(trimmedLines)
+        return line > 0 ? { line } : null
+      }
+      if (/^\d+-\d+$/.test(trimmedLines)) {
+        const [start, end] = trimmedLines.split('-').map(Number)
+        if (start >= 1 && end >= start) {
+          return { start_line: start, line: end }
+        }
+      }
+      core.warning(`Invalid lines format: "${lines}". It will be ignored.`)
+      return null
+    }
+
+    const reviewComments = specificReviews.flatMap(({ file, lines, review }) => {
+      const lineInfo = parseLines(lines)
+      if (lineInfo) {
+        return [{ path: file, body: review, ...lineInfo }]
+      }
+      return []
+    })
+
+    if (reviewComments.length > 0) {
+      try {
+        await octokit.rest.pulls.createReview({
+          owner,
+          repo,
+          pull_number: inputs.prNumber,
+          commit_id: pr.head.sha,
+          body: overview,
+          event: 'COMMENT',
+          comments: reviewComments,
+        })
+      } catch (error) {
+        const message = `Failed to create PR review. Falling back to a general comment. Error: ${
+          error instanceof Error ? error.message : 'Unknown error'
+        }`
+        core.warning(message)
+        await postGeneralComment('Polka Codes review overview:')
+      }
+    } else {
+      await postGeneralComment()
+    }
+  } else if (overview) {
+    await postGeneralComment()
+  } else {
+    core.info('No overview or specific reviews to post.')
+  }
 }
 
 export async function run(): Promise<void> {
@@ -115,8 +274,12 @@ export async function run(): Promise<void> {
       return
     }
 
-    const octokit = github.getOctokit(process.env.GITHUB_TOKEN ?? '')
+    if (inputs.review) {
+      await handleReview(inputs)
+      return
+    }
 
+    const octokit = github.getOctokit(process.env.GITHUB_TOKEN ?? '')
     const { owner, repo } = github.context.repo
     core.info(`Processing repository: ${owner}/${repo}`)
 
@@ -144,7 +307,7 @@ export async function run(): Promise<void> {
 
     let configArgs: string[] = []
     if (inputs.config) {
-      const configPaths = inputs.config.split(',')
+      const configPaths = inputs.config.split(',').map(sanitizePath)
       configArgs = configPaths.flatMap((path) => ['--config', path])
       core.info(`Using config files: ${configPaths.join(', ')}`)
     }

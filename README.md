@@ -67,6 +67,7 @@ For complete list of available environment variables, please refer to [Polka Cod
 | `pr_number` | The pull request number to process | No | - |
 | `task` | Direct task description to process | No | - |
 | `config` | Path to the polka.codes config file(s) | No | `.polkacodes.yml` |
+| `review` | Set to true to review the PR and post a comment. | No | `false` |
 
 Note: At least one of `issue_number`, `pr_number`, or `task` must be provided.
 
@@ -169,6 +170,39 @@ jobs:
         with:
           pr_number: ${{ github.event.inputs.pr_number }}
           task: Review the PR and fix any issues, improve documentation, improve test coverage if necessary.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          POLKA_API_KEY: ${{ secrets.POLKA_API_KEY }}
+```
+
+### Review a Pull Request
+
+This example demonstrates how to use the action to review a pull request and post a comment with the review summary.
+
+```yaml
+name: Review PR
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install dependencies
+        run: npm install
+      - name: Config git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+      - uses: polka-codes/action@master
+        with:
+          pr_number: ${{ github.event.pull_request.number }}
+          review: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           POLKA_API_KEY: ${{ secrets.POLKA_API_KEY }}

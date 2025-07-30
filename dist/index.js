@@ -35011,9 +35011,10 @@ async function getInputs() {
     config: core.getInput("config"),
     cliVersion: core.getInput("cli_version"),
     runnerPayload: core.getInput("runner_payload"),
-    runnerApiUrl: core.getInput("runner_api_url")
+    runnerApiUrl: core.getInput("runner_api_url"),
+    review: core.getInput("review") === "true"
   };
-  core.debug(`Received inputs: issue=${issueNumberStr}, pr=${prNumberStr}, task=${inputs.task}, config=${inputs.config}`);
+  core.debug(`Received inputs: issue=${issueNumberStr}, pr=${prNumberStr}, task=${inputs.task}, config=${inputs.config}, review=${inputs.review}`);
   return inputs;
 }
 var validateInputs = (inputs) => {
@@ -35023,6 +35024,15 @@ var validateInputs = (inputs) => {
       const error2 = "issue_number, pr_number, or task cannot be used when used as remote runner";
       core.error(error2);
       throw new Error(error2);
+    }
+    return;
+  }
+  if (inputs.review) {
+    if (!inputs.prNumber && !inputs.issueNumber) {
+      throw new Error('Review mode requires either a "pr_number" or "issue_number" input.');
+    }
+    if (inputs.task) {
+      core.warning('The "task" input is ignored when in review mode.');
     }
     return;
   }
@@ -35036,6 +35046,13 @@ var validateInputs = (inputs) => {
     core.error(error2);
     throw new Error(error2);
   }
+};
+var sanitizePath = (path2) => {
+  const trimmedPath = path2.trim();
+  if (trimmedPath.includes("..") || /[&;|`<>!$*]/.test(trimmedPath)) {
+    throw new Error(`Invalid or disallowed character in config path: ${trimmedPath}`);
+  }
+  return trimmedPath;
 };
 var remoteRunner = async (inputs) => {
   const payload = JSON.parse(inputs.runnerPayload);
@@ -35054,6 +35071,117 @@ var remoteRunner = async (inputs) => {
     oidcToken
   ], { stdio: "inherit" });
 };
+async function handleReview(inputs) {
+  core.info("Starting review process...");
+  const octokit = github.getOctokit(process.env.GITHUB_TOKEN ?? "");
+  const { owner, repo } = github.context.repo;
+  let configArgs = [];
+  if (inputs.config) {
+    const configPaths = inputs.config.split(",").map(sanitizePath);
+    configArgs = configPaths.flatMap((path2) => ["--config", path2]);
+    core.info(`Using config files for review: ${configPaths.join(", ")}`);
+  }
+  core.info("Executing review command...");
+  const reviewCommand = spawnSync("npx", [`@polka-codes/cli@${inputs.cliVersion}`, ...configArgs, "review", "--json"], {
+    encoding: "utf-8"
+  });
+  if (reviewCommand.error) {
+    throw new Error(`Failed to execute review command: ${reviewCommand.error.message}`);
+  }
+  if (reviewCommand.status !== 0) {
+    const errorMessage = `Review command failed with exit code ${reviewCommand.status}`;
+    core.error(errorMessage);
+    core.error(`Review command stderr: ${reviewCommand.stderr}`);
+    if (reviewCommand.stdout) {
+      core.error(`Review command stdout: ${reviewCommand.stdout}`);
+    }
+    throw new Error(errorMessage);
+  }
+  const jsonOutput = reviewCommand.stdout;
+  let reviewData;
+  try {
+    reviewData = JSON.parse(jsonOutput);
+  } catch (e) {
+    core.error("Failed to parse JSON output from review command.");
+    if (e instanceof Error) {
+      core.error(`Parsing error: ${e.message}`);
+    }
+    core.debug(`Received output for debugging: ${jsonOutput}`);
+    throw new Error('Invalid JSON received from review command. Expected { "overview": string, "specificReviews": [...] }');
+  }
+  const { overview, specificReviews } = reviewData;
+  const issue_number = inputs.prNumber ?? inputs.issueNumber;
+  if (!issue_number) {
+    throw new Error("No PR or issue number found for review posting.");
+  }
+  const postGeneralComment = async (fallbackMessage) => {
+    if (overview) {
+      core.info(`Posting overview as a general comment to #${issue_number}.`);
+      const body = fallbackMessage ? `${fallbackMessage}
+
+${overview}` : overview;
+      await octokit.rest.issues.createComment({
+        owner,
+        repo,
+        issue_number,
+        body
+      });
+    }
+  };
+  if (specificReviews.length > 0 && inputs.prNumber) {
+    core.info(`Posting a PR review with up to ${specificReviews.length} specific comments.`);
+    const { data: pr } = await octokit.rest.pulls.get({
+      owner,
+      repo,
+      pull_number: inputs.prNumber
+    });
+    const parseLines = (lines) => {
+      const trimmedLines = lines.trim();
+      if (/^\d+$/.test(trimmedLines)) {
+        const line = Number(trimmedLines);
+        return line > 0 ? { line } : null;
+      }
+      if (/^\d+-\d+$/.test(trimmedLines)) {
+        const [start, end] = trimmedLines.split("-").map(Number);
+        if (start >= 1 && end >= start) {
+          return { start_line: start, line: end };
+        }
+      }
+      core.warning(`Invalid lines format: "${lines}". It will be ignored.`);
+      return null;
+    };
+    const reviewComments = specificReviews.flatMap(({ file, lines, review }) => {
+      const lineInfo = parseLines(lines);
+      if (lineInfo) {
+        return [{ path: file, body: review, ...lineInfo }];
+      }
+      return [];
+    });
+    if (reviewComments.length > 0) {
+      try {
+        await octokit.rest.pulls.createReview({
+          owner,
+          repo,
+          pull_number: inputs.prNumber,
+          commit_id: pr.head.sha,
+          body: overview,
+          event: "COMMENT",
+          comments: reviewComments
+        });
+      } catch (error2) {
+        const message = `Failed to create PR review. Falling back to a general comment. Error: ${error2 instanceof Error ? error2.message : "Unknown error"}`;
+        core.warning(message);
+        await postGeneralComment("Polka Codes review overview:");
+      }
+    } else {
+      await postGeneralComment();
+    }
+  } else if (overview) {
+    await postGeneralComment();
+  } else {
+    core.info("No overview or specific reviews to post.");
+  }
+}
 async function run() {
   try {
     if (platform() === "linux") {
@@ -35077,6 +35205,10 @@ async function run() {
     validateInputs(inputs);
     if (inputs.runnerPayload) {
       await remoteRunner({ runnerPayload: inputs.runnerPayload, cliVersion: inputs.cliVersion, runnerApiUrl: inputs.runnerApiUrl });
+      return;
+    }
+    if (inputs.review) {
+      await handleReview(inputs);
       return;
     }
     const octokit = github.getOctokit(process.env.GITHUB_TOKEN ?? "");
@@ -35105,7 +35237,7 @@ ${taskDescription}`;
     }
     let configArgs = [];
     if (inputs.config) {
-      const configPaths = inputs.config.split(",");
+      const configPaths = inputs.config.split(",").map(sanitizePath);
       configArgs = configPaths.flatMap((path2) => ["--config", path2]);
       core.info(`Using config files: ${configPaths.join(", ")}`);
     }
