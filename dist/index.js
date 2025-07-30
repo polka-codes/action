@@ -35152,10 +35152,28 @@ ${overview}` : overview;
     };
     const reviewComments = specificReviews.flatMap(({ file, lines, review }) => {
       const lineInfo = parseLines(lines);
-      if (lineInfo) {
-        return [{ path: file, body: review, ...lineInfo }];
+      if (!lineInfo)
+        return [];
+      if (lineInfo.start_line !== undefined) {
+        return [
+          {
+            path: file,
+            body: review,
+            start_line: lineInfo.start_line,
+            start_side: "RIGHT",
+            line: lineInfo.line,
+            side: "RIGHT"
+          }
+        ];
       }
-      return [];
+      return [
+        {
+          path: file,
+          body: review,
+          line: lineInfo.line,
+          side: "RIGHT"
+        }
+      ];
     });
     if (reviewComments.length > 0) {
       try {
