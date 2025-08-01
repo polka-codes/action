@@ -35000,21 +35000,29 @@ ${commentBody}
 }
 
 // src/action.ts
+var coerceNumber = (value) => {
+  const v = value?.trim();
+  if (!v)
+    return;
+  const n = Number.parseInt(v, 10);
+  return Number.isFinite(n) && n > 0 ? n : undefined;
+};
+var coerceBoolean = (value) => value?.trim().toLowerCase() === "true";
 async function getInputs() {
   core.debug("Getting action inputs");
   const issueNumberStr = core.getInput("issue_number");
   const prNumberStr = core.getInput("pr_number");
   const inputs = {
-    issueNumber: issueNumberStr ? Number.parseInt(issueNumberStr) : undefined,
-    prNumber: prNumberStr ? Number.parseInt(prNumberStr) : undefined,
-    task: core.getInput("task"),
-    config: core.getInput("config"),
-    cliVersion: core.getInput("cli_version"),
-    runnerPayload: core.getInput("runner_payload"),
-    runnerApiUrl: core.getInput("runner_api_url"),
-    review: core.getInput("review") === "true"
+    issueNumber: coerceNumber(issueNumberStr),
+    prNumber: coerceNumber(prNumberStr),
+    task: core.getInput("task") || undefined,
+    config: core.getInput("config") || undefined,
+    cliVersion: core.getInput("cli_version") || "latest",
+    runnerPayload: core.getInput("runner_payload") || undefined,
+    runnerApiUrl: core.getInput("runner_api_url") || "https://api-dev.polka.codes",
+    review: coerceBoolean(core.getInput("review"))
   };
-  core.debug(`Received inputs: issue=${issueNumberStr}, pr=${prNumberStr}, task=${inputs.task}, config=${inputs.config}, review=${inputs.review}`);
+  core.debug(`Received inputs: issue=${issueNumberStr}, pr=${prNumberStr}, task=${inputs.task ? "[provided]" : "none"}, config=${inputs.config ?? "none"}, review=${inputs.review}`);
   return inputs;
 }
 var validateInputs = (inputs) => {
@@ -35054,14 +35062,31 @@ var sanitizePath = (path2) => {
   }
   return trimmedPath;
 };
+var safeSpawn = (cmd, args, options) => {
+  core.debug(`exec: ${cmd} ${args.join(" ")}`);
+  const res = spawnSync(cmd, args, options);
+  if (res.error) {
+    core.error(`Failed to execute command: ${cmd}: ${res.error.message}`);
+  }
+  return res;
+};
+var parseJson = (raw, context2) => {
+  try {
+    return JSON.parse(raw);
+  } catch (e) {
+    core.error(`Failed to parse JSON for ${context2}`);
+    core.debug(`Raw JSON: ${raw}`);
+    throw e instanceof Error ? e : new Error("JSON parse error");
+  }
+};
 var remoteRunner = async (inputs) => {
-  const payload = JSON.parse(inputs.runnerPayload);
+  const payload = parseJson(inputs.runnerPayload, "runnerPayload");
   if (payload.ref) {
-    spawnSync("git", ["fetch", "origin", payload.ref], { stdio: "inherit" });
-    spawnSync("git", ["checkout", payload.ref], { stdio: "inherit" });
+    safeSpawn("git", ["fetch", "origin", payload.ref], { stdio: "inherit" });
+    safeSpawn("git", ["checkout", payload.ref], { stdio: "inherit" });
   }
   const oidcToken = await core.getIDToken("https://polka.codes");
-  spawnSync("npx", [
+  safeSpawn("npx", [
     `@polka-codes/runner@${inputs.cliVersion}`,
     "--task-id",
     payload.taskId,
@@ -35078,63 +35103,40 @@ async function handleReview(inputs) {
   let configArgs = [];
   if (inputs.config) {
     const configPaths = inputs.config.split(",").map(sanitizePath);
-    configArgs = configPaths.flatMap((path2) => ["--config", path2]);
+    configArgs = configPaths.flatMap((p) => ["--config", p]);
     core.info(`Using config files for review: ${configPaths.join(", ")}`);
   }
   core.info("Executing review command...");
-  const reviewCommand = spawnSync("npx", [`@polka-codes/cli@${inputs.cliVersion}`, ...configArgs, "review", "--json"], {
+  const reviewCommand = safeSpawn("npx", [`@polka-codes/cli@${inputs.cliVersion}`, ...configArgs, "review", "--json"], {
     encoding: "utf-8"
   });
-  if (reviewCommand.error) {
-    throw new Error(`Failed to execute review command: ${reviewCommand.error.message}`);
-  }
   if (reviewCommand.status !== 0) {
     const errorMessage = `Review command failed with exit code ${reviewCommand.status}`;
     core.error(errorMessage);
-    core.error(`Review command stderr: ${reviewCommand.stderr}`);
-    if (reviewCommand.stdout) {
-      core.error(`Review command stdout: ${reviewCommand.stdout}`);
-    }
+    core.error(`stderr: ${reviewCommand.stderr}`);
+    if (reviewCommand.stdout)
+      core.error(`stdout: ${reviewCommand.stdout}`);
     throw new Error(errorMessage);
   }
-  const jsonOutput = reviewCommand.stdout;
-  let reviewData;
-  try {
-    reviewData = JSON.parse(jsonOutput);
-  } catch (e) {
-    core.error("Failed to parse JSON output from review command.");
-    if (e instanceof Error) {
-      core.error(`Parsing error: ${e.message}`);
-    }
-    core.debug(`Received output for debugging: ${jsonOutput}`);
-    throw new Error('Invalid JSON received from review command. Expected { "overview": string, "specificReviews": [...] }');
-  }
+  const jsonOutput = String(reviewCommand.stdout || "");
+  const reviewData = parseJson(jsonOutput, "review output JSON");
   const { overview, specificReviews } = reviewData;
   const issue_number = inputs.prNumber ?? inputs.issueNumber;
   if (!issue_number) {
     throw new Error("No PR or issue number found for review posting.");
   }
   const postGeneralComment = async (fallbackMessage) => {
-    if (overview) {
-      core.info(`Posting overview as a general comment to #${issue_number}.`);
-      const body = fallbackMessage ? `${fallbackMessage}
+    if (!overview)
+      return;
+    const body = fallbackMessage ? `${fallbackMessage}
 
 ${overview}` : overview;
-      await octokit.rest.issues.createComment({
-        owner,
-        repo,
-        issue_number,
-        body
-      });
-    }
+    core.info(`Posting overview as a general comment to #${issue_number}.`);
+    await octokit.rest.issues.createComment({ owner, repo, issue_number, body });
   };
   if (specificReviews.length > 0 && inputs.prNumber) {
     core.info(`Posting a PR review with up to ${specificReviews.length} specific comments.`);
-    const { data: pr } = await octokit.rest.pulls.get({
-      owner,
-      repo,
-      pull_number: inputs.prNumber
-    });
+    const { data: pr } = await octokit.rest.pulls.get({ owner, repo, pull_number: inputs.prNumber });
     const parseLines = (lines) => {
       const trimmedLines = lines.trim();
       if (/^\d+$/.test(trimmedLines)) {
@@ -35142,10 +35144,9 @@ ${overview}` : overview;
         return line > 0 ? { line } : null;
       }
       if (/^\d+-\d+$/.test(trimmedLines)) {
-        const [start, end] = trimmedLines.split("-").map(Number);
-        if (start >= 1 && end >= start) {
+        const [start, end] = trimmedLines.split("-").map((n) => Number(n));
+        if (start >= 1 && end >= start)
           return { start_line: start, line: end };
-        }
       }
       core.warning(`Invalid lines format: "${lines}". It will be ignored.`);
       return null;
@@ -35206,16 +35207,15 @@ async function run() {
       try {
         await import_exec.exec("rg", ["--version"], { silent: true });
         core.debug("ripgrep is already installed.");
-      } catch (error2) {
+      } catch {
         core.info("ripgrep not found, installing it.");
         try {
           await import_exec.exec("sudo", ["apt-get", "update"]);
           await import_exec.exec("sudo", ["apt-get", "install", "-y", "--no-install-recommends", "ripgrep"]);
         } catch (installError) {
           core.warning("Failed to install ripgrep, continuing without it.");
-          if (installError instanceof Error) {
+          if (installError instanceof Error)
             core.warning(installError.message);
-          }
         }
       }
     }
@@ -35237,11 +35237,11 @@ async function run() {
     if (inputs.issueNumber) {
       core.info(`Fetching issue #${inputs.issueNumber}`);
       taskDescription = await fetchIssue({ owner, repo, issueNumber: inputs.issueNumber, octokit });
-      core.debug(`Fetched issue description: ${taskDescription}`);
+      core.debug(`Fetched issue description length: ${taskDescription.length}`);
     } else if (inputs.prNumber) {
       core.info(`Fetching PR #${inputs.prNumber}`);
       taskDescription = await fetchPR({ owner, repo, prNumber: inputs.prNumber, octokit });
-      core.debug(`Fetched PR description: ${taskDescription}`);
+      core.debug(`Fetched PR description length: ${taskDescription.length}`);
     }
     if (inputs.task) {
       taskDescription = `${inputs.task}
@@ -35256,35 +35256,35 @@ ${taskDescription}`;
     let configArgs = [];
     if (inputs.config) {
       const configPaths = inputs.config.split(",").map(sanitizePath);
-      configArgs = configPaths.flatMap((path2) => ["--config", path2]);
+      configArgs = configPaths.flatMap((p) => ["--config", p]);
       core.info(`Using config files: ${configPaths.join(", ")}`);
     }
     let branchName = "";
     if (inputs.prNumber) {
       core.info(`Checking out PR #${inputs.prNumber}`);
-      spawnSync("gh", ["pr", "checkout", inputs.prNumber.toString()], { stdio: "inherit" });
+      safeSpawn("gh", ["pr", "checkout", String(inputs.prNumber)], { stdio: "inherit" });
     } else {
       branchName = `polka/task-${Date.now()}`;
       core.info(`Creating new branch: ${branchName}`);
-      spawnSync("git", ["checkout", "-b", branchName], { stdio: "inherit" });
+      safeSpawn("git", ["checkout", "-b", branchName], { stdio: "inherit" });
     }
     core.info("Starting task processing");
-    core.debug(`Task description: ${taskDescription}`);
+    core.debug(`Task description length: ${taskDescription.length}`);
     core.info("Executing Polka Codes CLI");
-    spawnSync("npx", [`@polka-codes/cli@${inputs.cliVersion}`, ...configArgs, taskDescription], { stdio: "inherit" });
+    safeSpawn("npx", [`@polka-codes/cli@${inputs.cliVersion}`, ...configArgs, taskDescription], { stdio: "inherit" });
     core.info("Committing changes");
-    spawnSync("git", ["add", "."], { stdio: "inherit" });
-    spawnSync("npx", [`@polka-codes/cli@${inputs.cliVersion}`, ...configArgs, "commit"], { stdio: "inherit" });
+    safeSpawn("git", ["add", "."], { stdio: "inherit" });
+    safeSpawn("npx", [`@polka-codes/cli@${inputs.cliVersion}`, ...configArgs, "commit"], { stdio: "inherit" });
     core.info("Pushing changes");
     if (branchName) {
       core.info(`Pushing to branch: ${branchName}`);
-      spawnSync("git", ["push", "origin", branchName], { stdio: "inherit" });
+      safeSpawn("git", ["push", "origin", branchName], { stdio: "inherit" });
     } else {
       core.info("Pushing to current branch");
-      spawnSync("git", ["push"], { stdio: "inherit" });
+      safeSpawn("git", ["push"], { stdio: "inherit" });
     }
     const extraContent = inputs.issueNumber ? [`Closes #${inputs.issueNumber}`] : [];
-    spawnSync("npx", [`@polka-codes/cli@${inputs.cliVersion}`, ...configArgs, "pr", ...extraContent], { stdio: "inherit" });
+    safeSpawn("npx", [`@polka-codes/cli@${inputs.cliVersion}`, ...configArgs, "pr", ...extraContent], { stdio: "inherit" });
   } catch (error2) {
     if (error2 instanceof Error) {
       core.error(`Failed with error: ${error2.message}`);
