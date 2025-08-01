@@ -35107,7 +35107,7 @@ async function handleReview(inputs) {
     core.info(`Using config files for review: ${configPaths.join(", ")}`);
   }
   core.info("Executing review command...");
-  const reviewCommand = safeSpawn("npx", [`@polka-codes/cli@${inputs.cliVersion}`, ...configArgs, "review", "--json"], {
+  const reviewCommand = safeSpawn("npx", [`@polka-codes/cli@${inputs.cliVersion}`, ...configArgs, "review", "--json", "--pr", String(inputs.prNumber)], {
     encoding: "utf-8"
   });
   if (reviewCommand.status !== 0) {

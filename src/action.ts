@@ -158,9 +158,13 @@ async function handleReview(inputs: ActionInputs): Promise<void> {
   }
 
   core.info('Executing review command...')
-  const reviewCommand = safeSpawn('npx', [`@polka-codes/cli@${inputs.cliVersion}`, ...configArgs, 'review', '--json'], {
-    encoding: 'utf-8',
-  })
+  const reviewCommand = safeSpawn(
+    'npx',
+    [`@polka-codes/cli@${inputs.cliVersion}`, ...configArgs, 'review', '--json', '--pr', String(inputs.prNumber)],
+    {
+      encoding: 'utf-8',
+    },
+  )
 
   if (reviewCommand.status !== 0) {
     const errorMessage = `Review command failed with exit code ${reviewCommand.status}`
