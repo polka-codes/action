@@ -35063,10 +35063,24 @@ var sanitizePath = (path2) => {
   return trimmedPath;
 };
 var safeSpawn = (cmd, args, options) => {
-  core.debug(`exec: ${cmd} ${args.join(" ")}`);
+  const startedAt = Date.now();
+  const pretty = `${cmd} ${args.join(" ")}`;
+  core.debug(`exec: ${pretty}`);
   const res = spawnSync(cmd, args, options);
+  const duration = Date.now() - startedAt;
   if (res.error) {
-    core.error(`Failed to execute command: ${cmd}: ${res.error.message}`);
+    core.error(`command failed: ${cmd}: ${res.error.message}`);
+  }
+  const status = res.status ?? -1;
+  const outcome = status === 0 ? "succeeded" : `failed (code ${status})`;
+  core.debug(`exec ${outcome} in ${duration}ms: ${pretty}`);
+  if (status !== 0 && options?.stdio !== "inherit") {
+    const stderr = typeof res.stderr === "string" ? res.stderr : res.stderr?.toString("utf-8");
+    const stdout = typeof res.stdout === "string" ? res.stdout : res.stdout?.toString("utf-8");
+    if (stderr)
+      core.debug(`stderr: ${stderr}`);
+    if (stdout)
+      core.debug(`stdout: ${stdout}`);
   }
   return res;
 };
@@ -35205,6 +35219,8 @@ ${overview}` : overview;
 }
 async function run() {
   try {
+    const actionStart = Date.now();
+    core.startGroup("Environment setup");
     if (platform() === "linux") {
       try {
         await import_exec.exec("rg", ["--version"], { silent: true });
@@ -35221,14 +35237,24 @@ async function run() {
         }
       }
     }
+    core.endGroup();
+    core.startGroup("Read and validate inputs");
     const inputs = await getInputs();
     validateInputs(inputs);
+    core.info(`Mode: ${inputs.runnerPayload ? "remote-runner" : inputs.review ? "review" : "task"}`);
+    core.endGroup();
     if (inputs.runnerPayload) {
+      core.startGroup("Remote runner");
       await remoteRunner({ runnerPayload: inputs.runnerPayload, cliVersion: inputs.cliVersion, runnerApiUrl: inputs.runnerApiUrl });
+      core.endGroup();
+      core.info(`Completed in ${Date.now() - actionStart}ms`);
       return;
     }
     if (inputs.review) {
+      core.startGroup("Review mode");
       await handleReview(inputs);
+      core.endGroup();
+      core.info(`Completed in ${Date.now() - actionStart}ms`);
       return;
     }
     const octokit = github.getOctokit(process.env.GITHUB_TOKEN ?? "");
@@ -35237,13 +35263,15 @@ async function run() {
     core.info("Fetching task description");
     let taskDescription = "";
     if (inputs.issueNumber) {
-      core.info(`Fetching issue #${inputs.issueNumber}`);
+      core.startGroup(`Fetch issue #${inputs.issueNumber}`);
       taskDescription = await fetchIssue({ owner, repo, issueNumber: inputs.issueNumber, octokit });
       core.debug(`Fetched issue description length: ${taskDescription.length}`);
+      core.endGroup();
     } else if (inputs.prNumber) {
-      core.info(`Fetching PR #${inputs.prNumber}`);
+      core.startGroup(`Fetch PR #${inputs.prNumber}`);
       taskDescription = await fetchPR({ owner, repo, prNumber: inputs.prNumber, octokit });
       core.debug(`Fetched PR description length: ${taskDescription.length}`);
+      core.endGroup();
     }
     if (inputs.task) {
       taskDescription = `${inputs.task}
@@ -35263,21 +35291,22 @@ ${taskDescription}`;
     }
     let branchName = "";
     if (inputs.prNumber) {
-      core.info(`Checking out PR #${inputs.prNumber}`);
+      core.startGroup(`Checkout PR #${inputs.prNumber}`);
       safeSpawn("gh", ["pr", "checkout", String(inputs.prNumber)], { stdio: "inherit" });
+      core.endGroup();
     } else {
       branchName = `polka/task-${Date.now()}`;
-      core.info(`Creating new branch: ${branchName}`);
+      core.startGroup(`Create branch ${branchName}`);
       safeSpawn("git", ["checkout", "-b", branchName], { stdio: "inherit" });
+      core.endGroup();
     }
-    core.info("Starting task processing");
+    core.startGroup("Run Polka Codes CLI");
     core.debug(`Task description length: ${taskDescription.length}`);
-    core.info("Executing Polka Codes CLI");
     safeSpawn("npx", [`@polka-codes/cli@${inputs.cliVersion}`, ...configArgs, taskDescription], { stdio: "inherit" });
-    core.info("Committing changes");
+    core.endGroup();
+    core.startGroup("Commit and push changes");
     safeSpawn("git", ["add", "."], { stdio: "inherit" });
     safeSpawn("npx", [`@polka-codes/cli@${inputs.cliVersion}`, ...configArgs, "commit"], { stdio: "inherit" });
-    core.info("Pushing changes");
     if (branchName) {
       core.info(`Pushing to branch: ${branchName}`);
       safeSpawn("git", ["push", "origin", branchName], { stdio: "inherit" });
@@ -35285,8 +35314,11 @@ ${taskDescription}`;
       core.info("Pushing to current branch");
       safeSpawn("git", ["push"], { stdio: "inherit" });
     }
+    core.endGroup();
+    core.startGroup("Open PR");
     const extraContent = inputs.issueNumber ? [`Closes #${inputs.issueNumber}`] : [];
     safeSpawn("npx", [`@polka-codes/cli@${inputs.cliVersion}`, ...configArgs, "pr", ...extraContent], { stdio: "inherit" });
+    core.endGroup();
   } catch (error2) {
     if (error2 instanceof Error) {
       core.error(`Failed with error: ${error2.message}`);
