@@ -1,6 +1,4 @@
-defaultProvider: anthropic
-defaultModel: claude-sonnet-4-20250514
-commands:
-  default:
-    provider: openrouter
-    model: deepseek/deepseek-chat
+defaultProvider: google-vertex
+defaultModel: gemini-2.5-pro
+maxMessageCount: 150
+budget: 2
