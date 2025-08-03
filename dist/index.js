@@ -35093,7 +35093,9 @@ var remoteRunner = async (inputs) => {
     "--session-token",
     payload.sessionToken,
     "--github-token",
-    oidcToken
+    oidcToken,
+    "--api",
+    inputs.runnerApiUrl
   ], { stdio: "inherit" });
 };
 async function handleReview(inputs) {
