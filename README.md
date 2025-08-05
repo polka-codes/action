@@ -67,7 +67,7 @@ For complete list of available environment variables, please refer to [Polka Cod
 | `config` | Path to the polka.codes config file. Can be a comma-separated list of paths | No | - |
 | `cli_version` | Version of @polka-codes/cli to use | No | `latest` |
 | `runner_payload` | The runner payload. This is used when used as remote runner for polka.codes service | No | - |
-| `runner_api_url` | The runner API URL. This is used when used as remote runner for polka.codes service | No | `https://api-dev.polka.codes` |
+| `runner_api_url` | The runner API URL. This is used when used as remote runner for polka.codes service | No | - |
 | `review` | Set to true to review the PR and post a comment. | No | `false` |
 
 Note: At least one of `issue_number`, `pr_number`, or `task` must be provided.

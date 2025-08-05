@@ -51,7 +51,7 @@ async function getInputs(): Promise<ActionInputs> {
     config: core.getInput('config') || undefined,
     cliVersion: core.getInput('cli_version') || 'latest',
     runnerPayload: core.getInput('runner_payload') || undefined,
-    runnerApiUrl: core.getInput('runner_api_url') || 'https://api-dev.polka.codes',
+    runnerApiUrl: core.getInput('runner_api_url'),
     review: coerceBoolean(core.getInput('review')),
   }
 

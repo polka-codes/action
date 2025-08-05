@@ -26,7 +26,6 @@ inputs:
     required: false
   runner_api_url:
     description: 'The runner API URL. This is used when used as remote runner for polka.codes service'
-    default: 'https://api-dev.polka.codes'
     required: false
   review:
     description: 'Set to true to review the PR and post a comment.'
