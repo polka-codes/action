@@ -31,6 +31,9 @@ inputs:
     description: 'Set to true to review the PR and post a comment.'
     required: false
     default: 'false'
+  verbose:
+    description: 'Verbosity level for CLI commands. Number (1-5) that translates to -v, -vv, -vvv, etc.'
+    required: false
 runs:
   using: 'node20'
   main: 'dist/index.js'

@@ -28,6 +28,7 @@ interface ActionInputs {
   runnerPayload?: string
   runnerApiUrl: string
   review: boolean
+  verbose?: number
 }
 
 const coerceNumber = (value: string | undefined): number | undefined => {
@@ -39,10 +40,16 @@ const coerceNumber = (value: string | undefined): number | undefined => {
 
 const coerceBoolean = (value: string | undefined): boolean => value?.trim().toLowerCase() === 'true'
 
+const generateVerboseFlags = (verbose?: number): string[] => {
+  if (!verbose || verbose < 1) return []
+  return [`-${'v'.repeat(Math.min(verbose, 5))}`]
+}
+
 async function getInputs(): Promise<ActionInputs> {
   core.debug('Getting action inputs')
   const issueNumberStr = core.getInput('issue_number')
   const prNumberStr = core.getInput('pr_number')
+  const verboseStr = core.getInput('verbose')
 
   const inputs: ActionInputs = {
     issueNumber: coerceNumber(issueNumberStr),
@@ -53,10 +60,11 @@ async function getInputs(): Promise<ActionInputs> {
     runnerPayload: core.getInput('runner_payload') || undefined,
     runnerApiUrl: core.getInput('runner_api_url'),
     review: coerceBoolean(core.getInput('review')),
+    verbose: coerceNumber(verboseStr),
   }
 
   core.debug(
-    `Received inputs: issue=${issueNumberStr}, pr=${prNumberStr}, task=${inputs.task ? '[provided]' : 'none'}, config=${inputs.config ?? 'none'}, review=${inputs.review}`,
+    `Received inputs: issue=${issueNumberStr}, pr=${prNumberStr}, task=${inputs.task ? '[provided]' : 'none'}, config=${inputs.config ?? 'none'}, review=${inputs.review}, verbose=${inputs.verbose ?? 'none'}`,
   )
   return inputs
 }
@@ -171,10 +179,15 @@ async function handleReview(inputs: ActionInputs): Promise<void> {
     core.info(`Using config files for review: ${configPaths.join(', ')}`)
   }
 
+  const verboseFlags = generateVerboseFlags(inputs.verbose)
+  if (verboseFlags.length > 0) {
+    core.info(`Using verbosity flags: ${verboseFlags.join(' ')}`)
+  }
+
   core.info('Executing review command...')
   const reviewCommand = safeSpawn(
     'npx',
-    [`@polka-codes/cli@${inputs.cliVersion}`, ...configArgs, 'review', '--json', '--pr', String(inputs.prNumber)],
+    [`@polka-codes/cli@${inputs.cliVersion}`, ...configArgs, ...verboseFlags, 'review', '--json', '--pr', String(inputs.prNumber)],
     {
       encoding: 'utf-8',
     },
@@ -353,6 +366,11 @@ export async function run(): Promise<void> {
       core.info(`Using config files: ${configPaths.join(', ')}`)
     }
 
+    const verboseFlags = generateVerboseFlags(inputs.verbose)
+    if (verboseFlags.length > 0) {
+      core.info(`Using verbosity flags: ${verboseFlags.join(' ')}`)
+    }
+
     let branchName = ''
 
     if (inputs.prNumber) {
@@ -368,12 +386,12 @@ export async function run(): Promise<void> {
 
     core.startGroup('Run Polka Codes CLI')
     core.debug(`Task description length: ${taskDescription.length}`)
-    safeSpawn('npx', [`@polka-codes/cli@${inputs.cliVersion}`, ...configArgs, taskDescription], { stdio: 'inherit' })
+    safeSpawn('npx', [`@polka-codes/cli@${inputs.cliVersion}`, ...configArgs, ...verboseFlags, taskDescription], { stdio: 'inherit' })
     core.endGroup()
 
     core.startGroup('Commit and push changes')
     safeSpawn('git', ['add', '.'], { stdio: 'inherit' })
-    safeSpawn('npx', [`@polka-codes/cli@${inputs.cliVersion}`, ...configArgs, 'commit'], { stdio: 'inherit' })
+    safeSpawn('npx', [`@polka-codes/cli@${inputs.cliVersion}`, ...configArgs, ...verboseFlags, 'commit'], { stdio: 'inherit' })
     if (branchName) {
       core.info(`Pushing to branch: ${branchName}`)
       safeSpawn('git', ['push', 'origin', branchName], { stdio: 'inherit' })
@@ -385,7 +403,7 @@ export async function run(): Promise<void> {
 
     core.startGroup('Open PR')
     const extraContent = inputs.issueNumber ? [`Closes #${inputs.issueNumber}`] : []
-    safeSpawn('npx', [`@polka-codes/cli@${inputs.cliVersion}`, ...configArgs, 'pr', ...extraContent], { stdio: 'inherit' })
+    safeSpawn('npx', [`@polka-codes/cli@${inputs.cliVersion}`, ...configArgs, ...verboseFlags, 'pr', ...extraContent], { stdio: 'inherit' })
     core.endGroup()
   } catch (error) {
     if (error instanceof Error) {

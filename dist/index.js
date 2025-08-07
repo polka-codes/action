@@ -35008,10 +35008,16 @@ var coerceNumber = (value) => {
   return Number.isFinite(n) && n > 0 ? n : undefined;
 };
 var coerceBoolean = (value) => value?.trim().toLowerCase() === "true";
+var generateVerboseFlags = (verbose) => {
+  if (!verbose || verbose < 1)
+    return [];
+  return [`-${"v".repeat(Math.min(verbose, 5))}`];
+};
 async function getInputs() {
   core.debug("Getting action inputs");
   const issueNumberStr = core.getInput("issue_number");
   const prNumberStr = core.getInput("pr_number");
+  const verboseStr = core.getInput("verbose");
   const inputs = {
     issueNumber: coerceNumber(issueNumberStr),
     prNumber: coerceNumber(prNumberStr),
@@ -35020,9 +35026,10 @@ async function getInputs() {
     cliVersion: core.getInput("cli_version") || "latest",
     runnerPayload: core.getInput("runner_payload") || undefined,
     runnerApiUrl: core.getInput("runner_api_url"),
-    review: coerceBoolean(core.getInput("review"))
+    review: coerceBoolean(core.getInput("review")),
+    verbose: coerceNumber(verboseStr)
   };
-  core.debug(`Received inputs: issue=${issueNumberStr}, pr=${prNumberStr}, task=${inputs.task ? "[provided]" : "none"}, config=${inputs.config ?? "none"}, review=${inputs.review}`);
+  core.debug(`Received inputs: issue=${issueNumberStr}, pr=${prNumberStr}, task=${inputs.task ? "[provided]" : "none"}, config=${inputs.config ?? "none"}, review=${inputs.review}, verbose=${inputs.verbose ?? "none"}`);
   return inputs;
 }
 var validateInputs = (inputs) => {
@@ -35122,8 +35129,12 @@ async function handleReview(inputs) {
     configArgs = configPaths.flatMap((p) => ["--config", p]);
     core.info(`Using config files for review: ${configPaths.join(", ")}`);
   }
+  const verboseFlags = generateVerboseFlags(inputs.verbose);
+  if (verboseFlags.length > 0) {
+    core.info(`Using verbosity flags: ${verboseFlags.join(" ")}`);
+  }
   core.info("Executing review command...");
-  const reviewCommand = safeSpawn("npx", [`@polka-codes/cli@${inputs.cliVersion}`, ...configArgs, "review", "--json", "--pr", String(inputs.prNumber)], {
+  const reviewCommand = safeSpawn("npx", [`@polka-codes/cli@${inputs.cliVersion}`, ...configArgs, ...verboseFlags, "review", "--json", "--pr", String(inputs.prNumber)], {
     encoding: "utf-8"
   });
   if (reviewCommand.status !== 0) {
@@ -35289,6 +35300,10 @@ ${taskDescription}`;
       configArgs = configPaths.flatMap((p) => ["--config", p]);
       core.info(`Using config files: ${configPaths.join(", ")}`);
     }
+    const verboseFlags = generateVerboseFlags(inputs.verbose);
+    if (verboseFlags.length > 0) {
+      core.info(`Using verbosity flags: ${verboseFlags.join(" ")}`);
+    }
     let branchName = "";
     if (inputs.prNumber) {
       core.startGroup(`Checkout PR #${inputs.prNumber}`);
@@ -35302,11 +35317,11 @@ ${taskDescription}`;
     }
     core.startGroup("Run Polka Codes CLI");
     core.debug(`Task description length: ${taskDescription.length}`);
-    safeSpawn("npx", [`@polka-codes/cli@${inputs.cliVersion}`, ...configArgs, taskDescription], { stdio: "inherit" });
+    safeSpawn("npx", [`@polka-codes/cli@${inputs.cliVersion}`, ...configArgs, ...verboseFlags, taskDescription], { stdio: "inherit" });
     core.endGroup();
     core.startGroup("Commit and push changes");
     safeSpawn("git", ["add", "."], { stdio: "inherit" });
-    safeSpawn("npx", [`@polka-codes/cli@${inputs.cliVersion}`, ...configArgs, "commit"], { stdio: "inherit" });
+    safeSpawn("npx", [`@polka-codes/cli@${inputs.cliVersion}`, ...configArgs, ...verboseFlags, "commit"], { stdio: "inherit" });
     if (branchName) {
       core.info(`Pushing to branch: ${branchName}`);
       safeSpawn("git", ["push", "origin", branchName], { stdio: "inherit" });
@@ -35317,7 +35332,7 @@ ${taskDescription}`;
     core.endGroup();
     core.startGroup("Open PR");
     const extraContent = inputs.issueNumber ? [`Closes #${inputs.issueNumber}`] : [];
-    safeSpawn("npx", [`@polka-codes/cli@${inputs.cliVersion}`, ...configArgs, "pr", ...extraContent], { stdio: "inherit" });
+    safeSpawn("npx", [`@polka-codes/cli@${inputs.cliVersion}`, ...configArgs, ...verboseFlags, "pr", ...extraContent], { stdio: "inherit" });
     core.endGroup();
   } catch (error2) {
     if (error2 instanceof Error) {
