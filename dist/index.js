@@ -35137,6 +35137,18 @@ async function handleReview(inputs) {
   core.info("Starting review process...");
   const octokit = github.getOctokit(process.env.GITHUB_TOKEN ?? "");
   const { owner, repo } = github.context.repo;
+  const getPrData = async (prNumber) => {
+    core.info(`Fetching PR #${prNumber} for base branch information.`);
+    const { data: prData } = await octokit.rest.pulls.get({ owner, repo, pull_number: prNumber });
+    const baseBranchRef = prData.base.ref;
+    core.info(`Base branch is '${baseBranchRef}'. Fetching...`);
+    const fetchResult = await safeExec("git", ["fetch", "origin", baseBranchRef], { inheritStdio: true });
+    if (fetchResult.exitCode !== 0) {
+      core.warning(`git fetch origin ${baseBranchRef} failed. This may cause issues with the review.`);
+    }
+    return prData;
+  };
+  const pr = inputs.prNumber ? await getPrData(inputs.prNumber) : undefined;
   let configArgs = [];
   if (inputs.config) {
     const configPaths = inputs.config.split(",").map(sanitizePath);
@@ -35196,7 +35208,9 @@ ${combinedBody}`);
   };
   if (specificReviews.length > 0 && inputs.prNumber) {
     core.info(`Posting a PR review with up to ${specificReviews.length} specific comments.`);
-    const { data: pr } = await octokit.rest.pulls.get({ owner, repo, pull_number: inputs.prNumber });
+    if (!pr) {
+      throw new Error("PR data not available for review.");
+    }
     const parseLines = (lines) => {
       const trimmedLines = lines.trim();
       if (/^\d+$/.test(trimmedLines)) {
