@@ -35157,7 +35157,7 @@ async function handleReview(inputs) {
     "--pr",
     String(inputs.prNumber)
   ]);
-  if (reviewCommand.exitCode !== 0) {
+  if (reviewCommand.exitCode > 0) {
     const errorMessage = `Review command failed with exit code ${reviewCommand.exitCode}`;
     core.error(errorMessage);
     core.error(`stderr: ${reviewCommand.stderr}`);
