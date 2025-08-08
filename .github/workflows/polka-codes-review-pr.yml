@@ -38,6 +38,7 @@ jobs:
           pr_number: ${{ github.event.inputs.pr_number || github.event.number }}
           config: .polkacodes.yml,ci.polkacodes.yml
           review: true
+          verbose: 2
         env:
           GITHUB_TOKEN: ${{ github.token }}
           GOOGLE_VERTEX_LOCATION: us-central1

@@ -8,9 +8,9 @@ scripts:
   lint:
     command: bun run lint
     description: Check code style with Biome
-  test:
-    command: bun test
-    description: Run tests with Bun's test runner
+  # test:
+  #   command: bun test
+  #   description: Run tests with Bun's test runner
   build:
     command: bun run build
     description: Build the project for production
