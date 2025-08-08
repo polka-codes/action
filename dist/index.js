@@ -35172,14 +35172,27 @@ async function handleReview(inputs) {
   if (!issue_number) {
     throw new Error("No PR or issue number found for review posting.");
   }
-  const postGeneralComment = async (fallbackMessage) => {
-    if (!overview)
-      return;
-    const body = fallbackMessage ? `${fallbackMessage}
+  const postCombinedComment = async (body, reviews) => {
+    let combinedBody = body;
+    if (reviews.length > 0) {
+      const reviewsBody = reviews.map(({ file, lines, review }) => `**${file}:${lines}**
 
-${overview}` : overview;
-    core.info(`Posting overview as a general comment to #${issue_number}.`);
-    await octokit.rest.issues.createComment({ owner, repo, issue_number, body });
+${review}`).join(`
+
+---
+
+`);
+      combinedBody += `
+
+---
+
+### Review Suggestions
+
+${reviewsBody}`;
+    }
+    core.info(`Posting comment to #${issue_number}: 
+${combinedBody}`);
+    await octokit.rest.issues.createComment({ owner, repo, issue_number, body: combinedBody });
   };
   if (specificReviews.length > 0 && inputs.prNumber) {
     core.info(`Posting a PR review with up to ${specificReviews.length} specific comments.`);
@@ -35195,55 +35208,73 @@ ${overview}` : overview;
         if (start >= 1 && end >= start)
           return { start_line: start, line: end };
       }
-      core.warning(`Invalid lines format: "${lines}". It will be ignored.`);
+      core.warning(`Invalid lines format: "${lines}". It will be included in the main comment.`);
       return null;
     };
-    const reviewComments = specificReviews.flatMap(({ file, lines, review }) => {
-      const lineInfo = parseLines(lines);
-      if (!lineInfo)
-        return [];
-      if (lineInfo.start_line !== undefined) {
-        return [
-          {
-            path: file,
-            body: review,
+    const postableComments = [];
+    const unpostableReviews = [];
+    for (const review of specificReviews) {
+      const lineInfo = parseLines(review.lines);
+      if (lineInfo) {
+        if (lineInfo.start_line !== undefined) {
+          postableComments.push({
+            path: review.file,
+            body: review.review,
             start_line: lineInfo.start_line,
             start_side: "RIGHT",
             line: lineInfo.line,
             side: "RIGHT"
-          }
-        ];
-      }
-      return [
-        {
-          path: file,
-          body: review,
-          line: lineInfo.line,
-          side: "RIGHT"
+          });
+        } else {
+          postableComments.push({
+            path: review.file,
+            body: review.review,
+            line: lineInfo.line,
+            side: "RIGHT"
+          });
         }
-      ];
-    });
-    if (reviewComments.length > 0) {
+      } else {
+        unpostableReviews.push(review);
+      }
+    }
+    let reviewBody = overview ?? "";
+    if (unpostableReviews.length > 0) {
+      const unpostableBody = unpostableReviews.map(({ file, lines, review }) => `**${file}:${lines}**
+
+${review}`).join(`
+
+---
+
+`);
+      reviewBody += `
+
+---
+
+### Suggestions that couldn't be attached to a specific line
+
+${unpostableBody}`;
+    }
+    if (postableComments.length > 0) {
       try {
         await octokit.rest.pulls.createReview({
           owner,
           repo,
           pull_number: inputs.prNumber,
           commit_id: pr.head.sha,
-          body: overview,
+          body: reviewBody,
           event: "COMMENT",
-          comments: reviewComments
+          comments: postableComments
         });
       } catch (error2) {
         const message = `Failed to create PR review. Falling back to a general comment. Error: ${error2 instanceof Error ? error2.message : "Unknown error"}`;
         core.warning(message);
-        await postGeneralComment("Polka Codes review overview:");
+        await postCombinedComment(overview ?? "", specificReviews);
       }
     } else {
-      await postGeneralComment();
+      await postCombinedComment(overview ?? "", specificReviews);
     }
-  } else if (overview) {
-    await postGeneralComment();
+  } else if (overview || specificReviews.length > 0) {
+    await postCombinedComment(overview ?? "", specificReviews);
   } else {
     core.info("No overview or specific reviews to post.");
   }
