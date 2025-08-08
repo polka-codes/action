@@ -121,14 +121,7 @@ interface ExecResult {
   stderr: string
 }
 
-const safeExec = async (
-  cmd: string,
-  args: string[],
-  options?: {
-    // Whether to inherit stdio. If false, the output will be captured.
-    inheritStdio?: boolean
-  },
-): Promise<ExecResult> => {
+const safeExec = async (cmd: string, args: string[]): Promise<ExecResult> => {
   const startedAt = Date.now()
   const pretty = `${cmd} ${args.join(' ')}`
   core.debug(`exec: ${pretty}`)
@@ -136,16 +129,11 @@ const safeExec = async (
   try {
     const res = await getExecOutput(cmd, args, { ignoreReturnCode: true })
 
-    if (options?.inheritStdio) {
-      if (res.stdout) core.info(res.stdout)
-      if (res.stderr) core.error(res.stderr)
-    }
-
     const duration = Date.now() - startedAt
     const outcome = res.exitCode === 0 ? 'succeeded' : `failed (code ${res.exitCode})`
     core.debug(`exec ${outcome} in ${duration}ms: ${pretty}`)
 
-    if (res.exitCode !== 0 && !options?.inheritStdio) {
+    if (res.exitCode !== 0) {
       if (res.stderr) core.debug(`stderr: ${res.stderr}`)
       if (res.stdout) core.debug(`stdout: ${res.stdout}`)
     }
@@ -174,31 +162,27 @@ const parseJson = <T>(raw: string, context: string): T => {
 const remoteRunner = async (inputs: { runnerPayload: string; cliVersion: string; runnerApiUrl: string }) => {
   const payload = parseJson<{ ref?: string; taskId: string; sessionToken: string }>(inputs.runnerPayload, 'runnerPayload')
   if (payload.ref) {
-    const fetchResult = await safeExec('git', ['fetch', 'origin', payload.ref], { inheritStdio: true })
+    const fetchResult = await safeExec('git', ['fetch', 'origin', payload.ref])
     if (fetchResult.exitCode !== 0) {
       throw new Error(`git fetch failed with exit code ${fetchResult.exitCode}`)
     }
-    const checkoutResult = await safeExec('git', ['checkout', payload.ref], { inheritStdio: true })
+    const checkoutResult = await safeExec('git', ['checkout', payload.ref])
     if (checkoutResult.exitCode !== 0) {
       throw new Error(`git checkout failed with exit code ${checkoutResult.exitCode}`)
     }
   }
   const oidcToken = await core.getIDToken('https://polka.codes')
-  await safeExec(
-    'npx',
-    [
-      `@polka-codes/runner@${inputs.cliVersion}`,
-      '--task-id',
-      payload.taskId,
-      '--session-token',
-      payload.sessionToken,
-      '--github-token',
-      oidcToken,
-      '--api',
-      inputs.runnerApiUrl,
-    ],
-    { inheritStdio: true },
-  )
+  await safeExec('npx', [
+    `@polka-codes/runner@${inputs.cliVersion}`,
+    '--task-id',
+    payload.taskId,
+    '--session-token',
+    payload.sessionToken,
+    '--github-token',
+    oidcToken,
+    '--api',
+    inputs.runnerApiUrl,
+  ])
 }
 
 async function handleReview(inputs: ActionInputs): Promise<void> {
@@ -211,7 +195,7 @@ async function handleReview(inputs: ActionInputs): Promise<void> {
     const { data: prData } = await octokit.rest.pulls.get({ owner, repo, pull_number: prNumber })
     const baseBranchRef = prData.base.ref
     core.info(`Base branch is '${baseBranchRef}'. Fetching...`)
-    const fetchResult = await safeExec('git', ['fetch', 'origin', baseBranchRef], { inheritStdio: true })
+    const fetchResult = await safeExec('git', ['fetch', 'origin', baseBranchRef])
     if (fetchResult.exitCode !== 0) {
       core.warning(`git fetch origin ${baseBranchRef} failed. This may cause issues with the review.`)
     }
@@ -366,13 +350,11 @@ export async function run(): Promise<void> {
         core.debug('ripgrep is already installed.')
       } else {
         core.info('ripgrep not found, installing it.')
-        const aptUpdate = await safeExec('sudo', ['apt-get', 'update'], { inheritStdio: true })
+        const aptUpdate = await safeExec('sudo', ['apt-get', 'update'])
         if (aptUpdate.exitCode !== 0) {
           throw new Error(`apt-get update failed with exit code ${aptUpdate.exitCode}`)
         }
-        const rgInstall = await safeExec('sudo', ['apt-get', 'install', '-y', '--no-install-recommends', 'ripgrep'], {
-          inheritStdio: true,
-        })
+        const rgInstall = await safeExec('sudo', ['apt-get', 'install', '-y', '--no-install-recommends', 'ripgrep'])
         if (rgInstall.exitCode !== 0) {
           throw new Error(`ripgrep installation failed with exit code ${rgInstall.exitCode}`)
         }
@@ -445,42 +427,38 @@ export async function run(): Promise<void> {
 
     if (inputs.prNumber) {
       core.startGroup(`Checkout PR #${inputs.prNumber}`)
-      await safeExec('gh', ['pr', 'checkout', String(inputs.prNumber)], { inheritStdio: true })
+      await safeExec('gh', ['pr', 'checkout', String(inputs.prNumber)])
       core.endGroup()
     } else {
       branchName = `polka/task-${Date.now()}`
       core.startGroup(`Create branch ${branchName}`)
-      await safeExec('git', ['checkout', '-b', branchName], { inheritStdio: true })
+      await safeExec('git', ['checkout', '-b', branchName])
       core.endGroup()
     }
 
     core.startGroup('Run Polka Codes CLI')
     core.debug(`Task description length: ${taskDescription.length}`)
-    await safeExec('npx', [`@polka-codes/cli@${inputs.cliVersion}`, ...configArgs, ...verboseFlags, taskDescription], {
-      inheritStdio: true,
-    })
+    await safeExec('npx', [`@polka-codes/cli@${inputs.cliVersion}`, ...configArgs, ...verboseFlags, taskDescription])
     core.endGroup()
 
     core.startGroup('Commit and push changes')
-    const addResult = await safeExec('git', ['add', '.'], { inheritStdio: true })
+    const addResult = await safeExec('git', ['add', '.'])
     if (addResult.exitCode !== 0) {
       throw new Error(`git add failed with exit code ${addResult.exitCode}`)
     }
-    await safeExec('npx', [`@polka-codes/cli@${inputs.cliVersion}`, ...configArgs, ...verboseFlags, 'commit'], { inheritStdio: true })
+    await safeExec('npx', [`@polka-codes/cli@${inputs.cliVersion}`, ...configArgs, ...verboseFlags, 'commit'])
     if (branchName) {
       core.info(`Pushing to branch: ${branchName}`)
-      await safeExec('git', ['push', 'origin', branchName], { inheritStdio: true })
+      await safeExec('git', ['push', 'origin', branchName])
     } else {
       core.info('Pushing to current branch')
-      await safeExec('git', ['push'], { inheritStdio: true })
+      await safeExec('git', ['push'])
     }
     core.endGroup()
 
     core.startGroup('Open PR')
     const extraContent = inputs.issueNumber ? [`Closes #${inputs.issueNumber}`] : []
-    await safeExec('npx', [`@polka-codes/cli@${inputs.cliVersion}`, ...configArgs, ...verboseFlags, 'pr', ...extraContent], {
-      inheritStdio: true,
-    })
+    await safeExec('npx', [`@polka-codes/cli@${inputs.cliVersion}`, ...configArgs, ...verboseFlags, 'pr', ...extraContent])
     core.endGroup()
   } catch (error) {
     if (error instanceof Error) {
