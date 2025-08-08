@@ -23518,7 +23518,6 @@ var require_extend = __commonJS((exports, module) => {
 var core = __toESM(require_core(), 1);
 var import_exec = __toESM(require_exec(), 1);
 var github = __toESM(require_github(), 1);
-import { spawnSync } from "node:child_process";
 import { platform } from "node:os";
 
 // node_modules/ccount/index.js
@@ -35069,27 +35068,36 @@ var sanitizePath = (path2) => {
   }
   return trimmedPath;
 };
-var safeSpawn = (cmd, args, options) => {
+var safeExec = async (cmd, args, options) => {
   const startedAt = Date.now();
   const pretty = `${cmd} ${args.join(" ")}`;
   core.debug(`exec: ${pretty}`);
-  const res = spawnSync(cmd, args, options);
-  const duration = Date.now() - startedAt;
-  if (res.error) {
-    core.error(`command failed: ${cmd}: ${res.error.message}`);
+  try {
+    const res = await import_exec.getExecOutput(cmd, args, { ignoreReturnCode: true });
+    if (options?.inheritStdio) {
+      if (res.stdout)
+        core.info(res.stdout);
+      if (res.stderr)
+        core.error(res.stderr);
+    }
+    const duration = Date.now() - startedAt;
+    const outcome = res.exitCode === 0 ? "succeeded" : `failed (code ${res.exitCode})`;
+    core.debug(`exec ${outcome} in ${duration}ms: ${pretty}`);
+    if (res.exitCode !== 0 && !options?.inheritStdio) {
+      if (res.stderr)
+        core.debug(`stderr: ${res.stderr}`);
+      if (res.stdout)
+        core.debug(`stdout: ${res.stdout}`);
+    }
+    return { exitCode: res.exitCode, stdout: res.stdout, stderr: res.stderr };
+  } catch (e) {
+    const duration = Date.now() - startedAt;
+    core.debug(`exec failed in ${duration}ms: ${pretty}`);
+    if (e instanceof Error) {
+      core.debug(e.message);
+    }
+    return { exitCode: 1, stdout: "", stderr: e instanceof Error ? e.message : "Unknown error" };
   }
-  const status = res.status ?? -1;
-  const outcome = status === 0 ? "succeeded" : `failed (code ${status})`;
-  core.debug(`exec ${outcome} in ${duration}ms: ${pretty}`);
-  if (status !== 0 && options?.stdio !== "inherit") {
-    const stderr = typeof res.stderr === "string" ? res.stderr : res.stderr?.toString("utf-8");
-    const stdout = typeof res.stdout === "string" ? res.stdout : res.stdout?.toString("utf-8");
-    if (stderr)
-      core.debug(`stderr: ${stderr}`);
-    if (stdout)
-      core.debug(`stdout: ${stdout}`);
-  }
-  return res;
 };
 var parseJson = (raw, context2) => {
   try {
@@ -35103,11 +35111,17 @@ var parseJson = (raw, context2) => {
 var remoteRunner = async (inputs) => {
   const payload = parseJson(inputs.runnerPayload, "runnerPayload");
   if (payload.ref) {
-    safeSpawn("git", ["fetch", "origin", payload.ref], { stdio: "inherit" });
-    safeSpawn("git", ["checkout", payload.ref], { stdio: "inherit" });
+    const fetchResult = await safeExec("git", ["fetch", "origin", payload.ref], { inheritStdio: true });
+    if (fetchResult.exitCode !== 0) {
+      throw new Error(`git fetch failed with exit code ${fetchResult.exitCode}`);
+    }
+    const checkoutResult = await safeExec("git", ["checkout", payload.ref], { inheritStdio: true });
+    if (checkoutResult.exitCode !== 0) {
+      throw new Error(`git checkout failed with exit code ${checkoutResult.exitCode}`);
+    }
   }
   const oidcToken = await core.getIDToken("https://polka.codes");
-  safeSpawn("npx", [
+  await safeExec("npx", [
     `@polka-codes/runner@${inputs.cliVersion}`,
     "--task-id",
     payload.taskId,
@@ -35117,7 +35131,7 @@ var remoteRunner = async (inputs) => {
     oidcToken,
     "--api",
     inputs.runnerApiUrl
-  ], { stdio: "inherit" });
+  ], { inheritStdio: true });
 };
 async function handleReview(inputs) {
   core.info("Starting review process...");
@@ -35134,32 +35148,51 @@ async function handleReview(inputs) {
     core.info(`Using verbosity flags: ${verboseFlags.join(" ")}`);
   }
   core.info("Executing review command...");
-  const reviewCommand = safeSpawn("npx", [`@polka-codes/cli@${inputs.cliVersion}`, ...configArgs, ...verboseFlags, "review", "--json", "--pr", String(inputs.prNumber)], {
-    encoding: "utf-8"
-  });
-  if (reviewCommand.status !== 0) {
-    const errorMessage = `Review command failed with exit code ${reviewCommand.status}`;
+  const reviewCommand = await safeExec("npx", [
+    `@polka-codes/cli@${inputs.cliVersion}`,
+    ...configArgs,
+    ...verboseFlags,
+    "review",
+    "--json",
+    "--pr",
+    String(inputs.prNumber)
+  ]);
+  if (reviewCommand.exitCode !== 0) {
+    const errorMessage = `Review command failed with exit code ${reviewCommand.exitCode}`;
     core.error(errorMessage);
     core.error(`stderr: ${reviewCommand.stderr}`);
     if (reviewCommand.stdout)
       core.error(`stdout: ${reviewCommand.stdout}`);
     throw new Error(errorMessage);
   }
-  const jsonOutput = String(reviewCommand.stdout || "");
+  const jsonOutput = reviewCommand.stdout;
   const reviewData = parseJson(jsonOutput, "review output JSON");
   const { overview, specificReviews } = reviewData;
   const issue_number = inputs.prNumber ?? inputs.issueNumber;
   if (!issue_number) {
     throw new Error("No PR or issue number found for review posting.");
   }
-  const postGeneralComment = async (fallbackMessage) => {
-    if (!overview)
-      return;
-    const body = fallbackMessage ? `${fallbackMessage}
+  const postCombinedComment = async (body, reviews) => {
+    let combinedBody = body;
+    if (reviews.length > 0) {
+      const reviewsBody = reviews.map(({ file, lines, review }) => `**${file}:${lines}**
 
-${overview}` : overview;
-    core.info(`Posting overview as a general comment to #${issue_number}.`);
-    await octokit.rest.issues.createComment({ owner, repo, issue_number, body });
+${review}`).join(`
+
+---
+
+`);
+      combinedBody += `
+
+---
+
+### Review Suggestions
+
+${reviewsBody}`;
+    }
+    core.info(`Posting comment to #${issue_number}: 
+${combinedBody}`);
+    await octokit.rest.issues.createComment({ owner, repo, issue_number, body: combinedBody });
   };
   if (specificReviews.length > 0 && inputs.prNumber) {
     core.info(`Posting a PR review with up to ${specificReviews.length} specific comments.`);
@@ -35175,55 +35208,73 @@ ${overview}` : overview;
         if (start >= 1 && end >= start)
           return { start_line: start, line: end };
       }
-      core.warning(`Invalid lines format: "${lines}". It will be ignored.`);
+      core.warning(`Invalid lines format: "${lines}". It will be included in the main comment.`);
       return null;
     };
-    const reviewComments = specificReviews.flatMap(({ file, lines, review }) => {
-      const lineInfo = parseLines(lines);
-      if (!lineInfo)
-        return [];
-      if (lineInfo.start_line !== undefined) {
-        return [
-          {
-            path: file,
-            body: review,
+    const postableComments = [];
+    const unpostableReviews = [];
+    for (const review of specificReviews) {
+      const lineInfo = parseLines(review.lines);
+      if (lineInfo) {
+        if (lineInfo.start_line !== undefined) {
+          postableComments.push({
+            path: review.file,
+            body: review.review,
             start_line: lineInfo.start_line,
             start_side: "RIGHT",
             line: lineInfo.line,
             side: "RIGHT"
-          }
-        ];
-      }
-      return [
-        {
-          path: file,
-          body: review,
-          line: lineInfo.line,
-          side: "RIGHT"
+          });
+        } else {
+          postableComments.push({
+            path: review.file,
+            body: review.review,
+            line: lineInfo.line,
+            side: "RIGHT"
+          });
         }
-      ];
-    });
-    if (reviewComments.length > 0) {
+      } else {
+        unpostableReviews.push(review);
+      }
+    }
+    let reviewBody = overview ?? "";
+    if (unpostableReviews.length > 0) {
+      const unpostableBody = unpostableReviews.map(({ file, lines, review }) => `**${file}:${lines}**
+
+${review}`).join(`
+
+---
+
+`);
+      reviewBody += `
+
+---
+
+### Suggestions that couldn't be attached to a specific line
+
+${unpostableBody}`;
+    }
+    if (postableComments.length > 0) {
       try {
         await octokit.rest.pulls.createReview({
           owner,
           repo,
           pull_number: inputs.prNumber,
           commit_id: pr.head.sha,
-          body: overview,
+          body: reviewBody,
           event: "COMMENT",
-          comments: reviewComments
+          comments: postableComments
         });
       } catch (error2) {
         const message = `Failed to create PR review. Falling back to a general comment. Error: ${error2 instanceof Error ? error2.message : "Unknown error"}`;
         core.warning(message);
-        await postGeneralComment("Polka Codes review overview:");
+        await postCombinedComment(overview ?? "", specificReviews);
       }
     } else {
-      await postGeneralComment();
+      await postCombinedComment(overview ?? "", specificReviews);
     }
-  } else if (overview) {
-    await postGeneralComment();
+  } else if (overview || specificReviews.length > 0) {
+    await postCombinedComment(overview ?? "", specificReviews);
   } else {
     core.info("No overview or specific reviews to post.");
   }
@@ -35233,18 +35284,20 @@ async function run() {
     const actionStart = Date.now();
     core.startGroup("Environment setup");
     if (platform() === "linux") {
-      try {
-        await import_exec.exec("rg", ["--version"], { silent: true });
+      const rgCheck = await safeExec("rg", ["--version"]);
+      if (rgCheck.exitCode === 0) {
         core.debug("ripgrep is already installed.");
-      } catch {
+      } else {
         core.info("ripgrep not found, installing it.");
-        try {
-          await import_exec.exec("sudo", ["apt-get", "update"]);
-          await import_exec.exec("sudo", ["apt-get", "install", "-y", "--no-install-recommends", "ripgrep"]);
-        } catch (installError) {
-          core.warning("Failed to install ripgrep, continuing without it.");
-          if (installError instanceof Error)
-            core.warning(installError.message);
+        const aptUpdate = await safeExec("sudo", ["apt-get", "update"], { inheritStdio: true });
+        if (aptUpdate.exitCode !== 0) {
+          throw new Error(`apt-get update failed with exit code ${aptUpdate.exitCode}`);
+        }
+        const rgInstall = await safeExec("sudo", ["apt-get", "install", "-y", "--no-install-recommends", "ripgrep"], {
+          inheritStdio: true
+        });
+        if (rgInstall.exitCode !== 0) {
+          throw new Error(`ripgrep installation failed with exit code ${rgInstall.exitCode}`);
         }
       }
     }
@@ -35307,32 +35360,39 @@ ${taskDescription}`;
     let branchName = "";
     if (inputs.prNumber) {
       core.startGroup(`Checkout PR #${inputs.prNumber}`);
-      safeSpawn("gh", ["pr", "checkout", String(inputs.prNumber)], { stdio: "inherit" });
+      await safeExec("gh", ["pr", "checkout", String(inputs.prNumber)], { inheritStdio: true });
       core.endGroup();
     } else {
       branchName = `polka/task-${Date.now()}`;
       core.startGroup(`Create branch ${branchName}`);
-      safeSpawn("git", ["checkout", "-b", branchName], { stdio: "inherit" });
+      await safeExec("git", ["checkout", "-b", branchName], { inheritStdio: true });
       core.endGroup();
     }
     core.startGroup("Run Polka Codes CLI");
     core.debug(`Task description length: ${taskDescription.length}`);
-    safeSpawn("npx", [`@polka-codes/cli@${inputs.cliVersion}`, ...configArgs, ...verboseFlags, taskDescription], { stdio: "inherit" });
+    await safeExec("npx", [`@polka-codes/cli@${inputs.cliVersion}`, ...configArgs, ...verboseFlags, taskDescription], {
+      inheritStdio: true
+    });
     core.endGroup();
     core.startGroup("Commit and push changes");
-    safeSpawn("git", ["add", "."], { stdio: "inherit" });
-    safeSpawn("npx", [`@polka-codes/cli@${inputs.cliVersion}`, ...configArgs, ...verboseFlags, "commit"], { stdio: "inherit" });
+    const addResult = await safeExec("git", ["add", "."], { inheritStdio: true });
+    if (addResult.exitCode !== 0) {
+      throw new Error(`git add failed with exit code ${addResult.exitCode}`);
+    }
+    await safeExec("npx", [`@polka-codes/cli@${inputs.cliVersion}`, ...configArgs, ...verboseFlags, "commit"], { inheritStdio: true });
     if (branchName) {
       core.info(`Pushing to branch: ${branchName}`);
-      safeSpawn("git", ["push", "origin", branchName], { stdio: "inherit" });
+      await safeExec("git", ["push", "origin", branchName], { inheritStdio: true });
     } else {
       core.info("Pushing to current branch");
-      safeSpawn("git", ["push"], { stdio: "inherit" });
+      await safeExec("git", ["push"], { inheritStdio: true });
     }
     core.endGroup();
     core.startGroup("Open PR");
     const extraContent = inputs.issueNumber ? [`Closes #${inputs.issueNumber}`] : [];
-    safeSpawn("npx", [`@polka-codes/cli@${inputs.cliVersion}`, ...configArgs, ...verboseFlags, "pr", ...extraContent], { stdio: "inherit" });
+    await safeExec("npx", [`@polka-codes/cli@${inputs.cliVersion}`, ...configArgs, ...verboseFlags, "pr", ...extraContent], {
+      inheritStdio: true
+    });
     core.endGroup();
   } catch (error2) {
     if (error2 instanceof Error) {
