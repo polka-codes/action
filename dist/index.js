@@ -35115,6 +35115,7 @@ var remoteRunner = async (inputs) => {
     }
   }
   const oidcToken = await core.getIDToken("https://polka.codes");
+  const apiParams = inputs.runnerApiUrl ? ["--api", inputs.runnerApiUrl] : [];
   await safeExec("npx", [
     `@polka-codes/runner@${inputs.cliVersion}`,
     "--task-id",
@@ -35123,8 +35124,7 @@ var remoteRunner = async (inputs) => {
     payload.sessionToken,
     "--github-token",
     oidcToken,
-    "--api",
-    inputs.runnerApiUrl
+    ...apiParams
   ]);
 };
 var parseDiffHunks = (patch) => {
