@@ -35127,6 +35127,40 @@ var remoteRunner = async (inputs) => {
     inputs.runnerApiUrl
   ]);
 };
+var parseDiffHunks = (patch) => {
+  const hunks = [];
+  const lines = patch.split(`
+`);
+  for (const line of lines) {
+    const hunkHeader = line.match(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/);
+    if (hunkHeader) {
+      const startLine = Number.parseInt(hunkHeader[1], 10);
+      const lineCount = hunkHeader[2] ? Number.parseInt(hunkHeader[2], 10) : 1;
+      hunks.push({ startLine, lineCount });
+    }
+  }
+  return hunks;
+};
+var isLineInDiff = (filename, line, fileChanges) => {
+  const fileInfo = fileChanges.get(filename);
+  if (!fileInfo) {
+    return false;
+  }
+  return fileInfo.hunks.some((hunk) => {
+    const endLine = hunk.startLine + hunk.lineCount - 1;
+    return line >= hunk.startLine && line <= endLine;
+  });
+};
+var isRangeInDiff = (filename, startLine, endLine, fileChanges) => {
+  const fileInfo = fileChanges.get(filename);
+  if (!fileInfo) {
+    return false;
+  }
+  return fileInfo.hunks.some((hunk) => {
+    const hunkEndLine = hunk.startLine + hunk.lineCount - 1;
+    return startLine >= hunk.startLine && endLine <= hunkEndLine;
+  });
+};
 async function handleReview(inputs) {
   core.info("Starting review process...");
   const octokit = github.getOctokit(process.env.GITHUB_TOKEN ?? "");
@@ -35142,7 +35176,24 @@ async function handleReview(inputs) {
     }
     return prData;
   };
+  const getPrFiles = async (prNumber) => {
+    core.info(`Fetching PR #${prNumber} files for diff validation.`);
+    const { data: files } = await octokit.rest.pulls.listFiles({ owner, repo, pull_number: prNumber });
+    const fileChanges2 = new Map;
+    for (const file of files) {
+      if (file.patch && (file.status === "modified" || file.status === "added" || file.status === "renamed")) {
+        const hunks = parseDiffHunks(file.patch);
+        fileChanges2.set(file.filename, {
+          filename: file.filename,
+          hunks
+        });
+        core.debug(`Parsed ${hunks.length} diff hunks for file: ${file.filename}`);
+      }
+    }
+    return fileChanges2;
+  };
   const pr = inputs.prNumber ? await getPrData(inputs.prNumber) : undefined;
+  const fileChanges = inputs.prNumber ? await getPrFiles(inputs.prNumber) : new Map;
   let configArgs = [];
   if (inputs.config) {
     const configPaths = inputs.config.split(",").map(sanitizePath);
@@ -35224,22 +35275,27 @@ ${combinedBody}`);
     for (const review of specificReviews) {
       const lineInfo = parseLines(review.lines);
       if (lineInfo) {
+        let canPost = false;
         if (lineInfo.start_line !== undefined) {
-          postableComments.push({
-            path: review.file,
-            body: review.review,
-            start_line: lineInfo.start_line,
-            start_side: "RIGHT",
-            line: lineInfo.line,
-            side: "RIGHT"
-          });
+          canPost = isRangeInDiff(review.file, lineInfo.start_line, lineInfo.line, fileChanges);
         } else {
-          postableComments.push({
+          canPost = isLineInDiff(review.file, lineInfo.line, fileChanges);
+        }
+        if (canPost) {
+          const comment = {
             path: review.file,
             body: review.review,
             line: lineInfo.line,
             side: "RIGHT"
-          });
+          };
+          if (lineInfo.start_line) {
+            comment.start_line = lineInfo.start_line;
+            comment.start_side = "RIGHT";
+          }
+          postableComments.push(comment);
+        } else {
+          core.debug(`Comment for ${review.file}:${review.lines} not in diff, moving to unpostable reviews`);
+          unpostableReviews.push(review);
         }
       } else {
         unpostableReviews.push(review);

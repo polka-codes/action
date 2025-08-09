@@ -185,6 +185,56 @@ const remoteRunner = async (inputs: { runnerPayload: string; cliVersion: string;
   ])
 }
 
+interface DiffHunk {
+  startLine: number
+  lineCount: number
+}
+
+interface FileChangeInfo {
+  filename: string
+  hunks: DiffHunk[]
+}
+
+const parseDiffHunks = (patch: string): DiffHunk[] => {
+  const hunks: DiffHunk[] = []
+  const lines = patch.split('\n')
+
+  for (const line of lines) {
+    const hunkHeader = line.match(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/)
+    if (hunkHeader) {
+      const startLine = Number.parseInt(hunkHeader[1], 10)
+      const lineCount = hunkHeader[2] ? Number.parseInt(hunkHeader[2], 10) : 1
+      hunks.push({ startLine, lineCount })
+    }
+  }
+
+  return hunks
+}
+
+const isLineInDiff = (filename: string, line: number, fileChanges: Map<string, FileChangeInfo>): boolean => {
+  const fileInfo = fileChanges.get(filename)
+  if (!fileInfo) {
+    return false
+  }
+
+  return fileInfo.hunks.some((hunk) => {
+    const endLine = hunk.startLine + hunk.lineCount - 1
+    return line >= hunk.startLine && line <= endLine
+  })
+}
+
+const isRangeInDiff = (filename: string, startLine: number, endLine: number, fileChanges: Map<string, FileChangeInfo>): boolean => {
+  const fileInfo = fileChanges.get(filename)
+  if (!fileInfo) {
+    return false
+  }
+
+  return fileInfo.hunks.some((hunk) => {
+    const hunkEndLine = hunk.startLine + hunk.lineCount - 1
+    return startLine >= hunk.startLine && endLine <= hunkEndLine
+  })
+}
+
 async function handleReview(inputs: ActionInputs): Promise<void> {
   core.info('Starting review process...')
   const octokit = github.getOctokit(process.env.GITHUB_TOKEN ?? '')
@@ -202,7 +252,28 @@ async function handleReview(inputs: ActionInputs): Promise<void> {
     return prData
   }
 
+  const getPrFiles = async (prNumber: number): Promise<Map<string, FileChangeInfo>> => {
+    core.info(`Fetching PR #${prNumber} files for diff validation.`)
+    const { data: files } = await octokit.rest.pulls.listFiles({ owner, repo, pull_number: prNumber })
+
+    const fileChanges = new Map<string, FileChangeInfo>()
+
+    for (const file of files) {
+      if (file.patch && (file.status === 'modified' || file.status === 'added' || file.status === 'renamed')) {
+        const hunks = parseDiffHunks(file.patch)
+        fileChanges.set(file.filename, {
+          filename: file.filename,
+          hunks,
+        })
+        core.debug(`Parsed ${hunks.length} diff hunks for file: ${file.filename}`)
+      }
+    }
+
+    return fileChanges
+  }
+
   const pr = inputs.prNumber ? await getPrData(inputs.prNumber) : undefined
+  const fileChanges = inputs.prNumber ? await getPrFiles(inputs.prNumber) : new Map<string, FileChangeInfo>()
 
   let configArgs: string[] = []
   if (inputs.config) {
@@ -284,22 +355,31 @@ async function handleReview(inputs: ActionInputs): Promise<void> {
     for (const review of specificReviews) {
       const lineInfo = parseLines(review.lines)
       if (lineInfo) {
+        let canPost = false
+
         if (lineInfo.start_line !== undefined) {
-          postableComments.push({
-            path: review.file,
-            body: review.review,
-            start_line: lineInfo.start_line,
-            start_side: 'RIGHT',
-            line: lineInfo.line,
-            side: 'RIGHT',
-          })
+          // For range comments, check if the range overlaps with diff
+          canPost = isRangeInDiff(review.file, lineInfo.start_line, lineInfo.line, fileChanges)
         } else {
-          postableComments.push({
+          // For single line comments, check if the line is in diff
+          canPost = isLineInDiff(review.file, lineInfo.line, fileChanges)
+        }
+
+        if (canPost) {
+          const comment: ReviewComments[0] = {
             path: review.file,
             body: review.review,
             line: lineInfo.line,
             side: 'RIGHT',
-          })
+          }
+          if (lineInfo.start_line) {
+            comment.start_line = lineInfo.start_line
+            comment.start_side = 'RIGHT'
+          }
+          postableComments.push(comment)
+        } else {
+          core.debug(`Comment for ${review.file}:${review.lines} not in diff, moving to unpostable reviews`)
+          unpostableReviews.push(review)
         }
       } else {
         unpostableReviews.push(review)
