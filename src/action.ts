@@ -213,28 +213,50 @@ const parseDiffHunks = (patch: string): DiffHunk[] => {
   return hunks
 }
 
-const isLineInDiff = (filename: string, line: number, fileChanges: Map<string, FileChangeInfo>): boolean => {
-  const fileInfo = fileChanges.get(filename)
-  if (!fileInfo) {
-    return false
-  }
-
-  return fileInfo.hunks.some((hunk) => {
-    const endLine = hunk.startLine + hunk.lineCount - 1
-    return line >= hunk.startLine && line <= endLine
-  })
+interface HunkMatch {
+  hunk: DiffHunk
+  isFuzzy: boolean
 }
 
-const isRangeInDiff = (filename: string, startLine: number, endLine: number, fileChanges: Map<string, FileChangeInfo>): boolean => {
-  const fileInfo = fileChanges.get(filename)
-  if (!fileInfo) {
-    return false
+const findBestHunkForReview = (
+  fileInfo: FileChangeInfo,
+  reviewStartLine: number,
+  reviewEndLine: number,
+  maxDistance = 10,
+): HunkMatch | null => {
+  let bestMatch: HunkMatch | null = null
+  let minDistance = Number.POSITIVE_INFINITY
+
+  for (const hunk of fileInfo.hunks) {
+    const hunkEndLine = hunk.startLine + hunk.lineCount - 1
+
+    // Check for direct containment or overlap
+    const isContained = reviewStartLine >= hunk.startLine && reviewEndLine <= hunkEndLine
+    const isOverlapping =
+      (reviewStartLine >= hunk.startLine && reviewStartLine <= hunkEndLine) ||
+      (reviewEndLine >= hunk.startLine && reviewEndLine <= hunkEndLine) ||
+      (hunk.startLine >= reviewStartLine && hunkEndLine <= reviewEndLine)
+
+    if (isContained || isOverlapping) {
+      return { hunk, isFuzzy: false }
+    }
+
+    // Calculate distance for fuzzy matching
+    const distanceToStart = Math.abs(hunk.startLine - reviewEndLine)
+    const distanceToEnd = Math.abs(hunkEndLine - reviewStartLine)
+    const distance = Math.min(distanceToStart, distanceToEnd)
+
+    if (distance < minDistance) {
+      minDistance = distance
+      bestMatch = { hunk, isFuzzy: true }
+    }
   }
 
-  return fileInfo.hunks.some((hunk) => {
-    const hunkEndLine = hunk.startLine + hunk.lineCount - 1
-    return startLine >= hunk.startLine && endLine <= hunkEndLine
-  })
+  if (bestMatch && minDistance <= maxDistance) {
+    return bestMatch
+  }
+
+  return null
 }
 
 async function handleReview(inputs: ActionInputs): Promise<void> {
@@ -356,34 +378,46 @@ async function handleReview(inputs: ActionInputs): Promise<void> {
 
     for (const review of specificReviews) {
       const lineInfo = parseLines(review.lines)
-      if (lineInfo) {
-        let canPost = false
+      const fileInfo = fileChanges.get(review.file)
 
-        if (lineInfo.start_line !== undefined) {
-          // For range comments, check if the range overlaps with diff
-          canPost = isRangeInDiff(review.file, lineInfo.start_line, lineInfo.line, fileChanges)
-        } else {
-          // For single line comments, check if the line is in diff
-          canPost = isLineInDiff(review.file, lineInfo.line, fileChanges)
-        }
+      if (lineInfo && fileInfo) {
+        const reviewStartLine = lineInfo.start_line ?? lineInfo.line
+        const reviewEndLine = lineInfo.line
+        const match = findBestHunkForReview(fileInfo, reviewStartLine, reviewEndLine)
 
-        if (canPost) {
-          const comment: ReviewComments[0] = {
-            path: review.file,
-            body: review.review,
-            line: lineInfo.line,
-            side: 'RIGHT',
-          }
-          if (lineInfo.start_line) {
-            comment.start_line = lineInfo.start_line
-            comment.start_side = 'RIGHT'
+        if (match) {
+          let comment: ReviewComments[0]
+          if (match.isFuzzy) {
+            const hunkEndLine = match.hunk.startLine + match.hunk.lineCount - 1
+            const originalLines = lineInfo.start_line ? `${lineInfo.start_line}-${lineInfo.line}` : `${lineInfo.line}`
+            const commentBody = `> [!NOTE]\n> This comment was intended for line(s) ${originalLines} but was moved to the closest relevant code block.\n\n${review.review}`
+            comment = {
+              path: review.file,
+              body: commentBody,
+              start_line: match.hunk.startLine,
+              start_side: 'RIGHT',
+              line: hunkEndLine,
+              side: 'RIGHT',
+            }
+          } else {
+            comment = {
+              path: review.file,
+              body: review.review,
+              line: lineInfo.line,
+              side: 'RIGHT',
+            }
+            if (lineInfo.start_line) {
+              comment.start_line = lineInfo.start_line
+              comment.start_side = 'RIGHT'
+            }
           }
           postableComments.push(comment)
         } else {
-          core.debug(`Comment for ${review.file}:${review.lines} not in diff, moving to unpostable reviews`)
+          core.debug(`No suitable hunk found for comment on ${review.file}:${review.lines}, moving to unpostable reviews`)
           unpostableReviews.push(review)
         }
       } else {
+        if (!fileInfo) core.debug(`File ${review.file} not in PR changes.`)
         unpostableReviews.push(review)
       }
     }

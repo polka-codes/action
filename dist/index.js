@@ -35141,25 +35141,28 @@ var parseDiffHunks = (patch) => {
   }
   return hunks;
 };
-var isLineInDiff = (filename, line, fileChanges) => {
-  const fileInfo = fileChanges.get(filename);
-  if (!fileInfo) {
-    return false;
-  }
-  return fileInfo.hunks.some((hunk) => {
-    const endLine = hunk.startLine + hunk.lineCount - 1;
-    return line >= hunk.startLine && line <= endLine;
-  });
-};
-var isRangeInDiff = (filename, startLine, endLine, fileChanges) => {
-  const fileInfo = fileChanges.get(filename);
-  if (!fileInfo) {
-    return false;
-  }
-  return fileInfo.hunks.some((hunk) => {
+var findBestHunkForReview = (fileInfo, reviewStartLine, reviewEndLine, maxDistance = 10) => {
+  let bestMatch = null;
+  let minDistance = Number.POSITIVE_INFINITY;
+  for (const hunk of fileInfo.hunks) {
     const hunkEndLine = hunk.startLine + hunk.lineCount - 1;
-    return startLine >= hunk.startLine && endLine <= hunkEndLine;
-  });
+    const isContained = reviewStartLine >= hunk.startLine && reviewEndLine <= hunkEndLine;
+    const isOverlapping = reviewStartLine >= hunk.startLine && reviewStartLine <= hunkEndLine || reviewEndLine >= hunk.startLine && reviewEndLine <= hunkEndLine || hunk.startLine >= reviewStartLine && hunkEndLine <= reviewEndLine;
+    if (isContained || isOverlapping) {
+      return { hunk, isFuzzy: false };
+    }
+    const distanceToStart = Math.abs(hunk.startLine - reviewEndLine);
+    const distanceToEnd = Math.abs(hunkEndLine - reviewStartLine);
+    const distance = Math.min(distanceToStart, distanceToEnd);
+    if (distance < minDistance) {
+      minDistance = distance;
+      bestMatch = { hunk, isFuzzy: true };
+    }
+  }
+  if (bestMatch && minDistance <= maxDistance) {
+    return bestMatch;
+  }
+  return null;
 };
 async function handleReview(inputs) {
   core.info("Starting review process...");
@@ -35274,30 +35277,48 @@ ${combinedBody}`);
     const unpostableReviews = [];
     for (const review of specificReviews) {
       const lineInfo = parseLines(review.lines);
-      if (lineInfo) {
-        let canPost = false;
-        if (lineInfo.start_line !== undefined) {
-          canPost = isRangeInDiff(review.file, lineInfo.start_line, lineInfo.line, fileChanges);
-        } else {
-          canPost = isLineInDiff(review.file, lineInfo.line, fileChanges);
-        }
-        if (canPost) {
-          const comment = {
-            path: review.file,
-            body: review.review,
-            line: lineInfo.line,
-            side: "RIGHT"
-          };
-          if (lineInfo.start_line) {
-            comment.start_line = lineInfo.start_line;
-            comment.start_side = "RIGHT";
+      const fileInfo = fileChanges.get(review.file);
+      if (lineInfo && fileInfo) {
+        const reviewStartLine = lineInfo.start_line ?? lineInfo.line;
+        const reviewEndLine = lineInfo.line;
+        const match = findBestHunkForReview(fileInfo, reviewStartLine, reviewEndLine);
+        if (match) {
+          let comment;
+          if (match.isFuzzy) {
+            const hunkEndLine = match.hunk.startLine + match.hunk.lineCount - 1;
+            const originalLines = lineInfo.start_line ? `${lineInfo.start_line}-${lineInfo.line}` : `${lineInfo.line}`;
+            const commentBody = `> [!NOTE]
+> This comment was intended for line(s) ${originalLines} but was moved to the closest relevant code block.
+
+${review.review}`;
+            comment = {
+              path: review.file,
+              body: commentBody,
+              start_line: match.hunk.startLine,
+              start_side: "RIGHT",
+              line: hunkEndLine,
+              side: "RIGHT"
+            };
+          } else {
+            comment = {
+              path: review.file,
+              body: review.review,
+              line: lineInfo.line,
+              side: "RIGHT"
+            };
+            if (lineInfo.start_line) {
+              comment.start_line = lineInfo.start_line;
+              comment.start_side = "RIGHT";
+            }
           }
           postableComments.push(comment);
         } else {
-          core.debug(`Comment for ${review.file}:${review.lines} not in diff, moving to unpostable reviews`);
+          core.debug(`No suitable hunk found for comment on ${review.file}:${review.lines}, moving to unpostable reviews`);
           unpostableReviews.push(review);
         }
       } else {
+        if (!fileInfo)
+          core.debug(`File ${review.file} not in PR changes.`);
         unpostableReviews.push(review);
       }
     }
