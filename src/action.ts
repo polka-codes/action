@@ -127,16 +127,21 @@ const safeExec = async (cmd: string, args: string[]): Promise<ExecResult> => {
   core.debug(`exec: ${pretty}`)
 
   try {
-    const res = await getExecOutput(cmd, args, { ignoreReturnCode: true })
+    const res = await getExecOutput(cmd, args, {
+      ignoreReturnCode: true,
+      listeners: {
+        stderr: (data: Buffer) => {
+          core.debug(data.toString())
+        },
+        stdout: (data: Buffer) => {
+          core.debug(data.toString())
+        },
+      },
+    })
 
     const duration = Date.now() - startedAt
     const outcome = res.exitCode === 0 ? 'succeeded' : `failed (code ${res.exitCode})`
     core.debug(`exec ${outcome} in ${duration}ms: ${pretty}`)
-
-    if (res.exitCode !== 0) {
-      if (res.stderr) core.debug(`stderr: ${res.stderr}`)
-      if (res.stdout) core.debug(`stdout: ${res.stdout}`)
-    }
 
     return { exitCode: res.exitCode, stdout: res.stdout, stderr: res.stderr }
   } catch (e) {

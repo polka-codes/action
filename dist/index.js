@@ -35073,16 +35073,20 @@ var safeExec = async (cmd, args) => {
   const pretty = `${cmd} ${args.join(" ")}`;
   core.debug(`exec: ${pretty}`);
   try {
-    const res = await import_exec.getExecOutput(cmd, args, { ignoreReturnCode: true });
+    const res = await import_exec.getExecOutput(cmd, args, {
+      ignoreReturnCode: true,
+      listeners: {
+        stderr: (data) => {
+          core.debug(data.toString());
+        },
+        stdout: (data) => {
+          core.debug(data.toString());
+        }
+      }
+    });
     const duration = Date.now() - startedAt;
     const outcome = res.exitCode === 0 ? "succeeded" : `failed (code ${res.exitCode})`;
     core.debug(`exec ${outcome} in ${duration}ms: ${pretty}`);
-    if (res.exitCode !== 0) {
-      if (res.stderr)
-        core.debug(`stderr: ${res.stderr}`);
-      if (res.stdout)
-        core.debug(`stdout: ${res.stdout}`);
-    }
     return { exitCode: res.exitCode, stdout: res.stdout, stderr: res.stderr };
   } catch (e) {
     const duration = Date.now() - startedAt;
