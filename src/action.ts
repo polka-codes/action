@@ -180,8 +180,7 @@ const remoteRunner = async (inputs: { runnerPayload: string; cliVersion: string;
 
   const apiParams = inputs.runnerApiUrl ? ['--api', inputs.runnerApiUrl] : []
 
-  await safeExec('npx', [
-    `@polka-codes/runner@${inputs.cliVersion}`,
+  await safeExec('polka-runner', [
     '--task-id',
     payload.taskId,
     '--session-token',
@@ -317,15 +316,7 @@ async function handleReview(inputs: ActionInputs): Promise<void> {
   }
 
   core.info('Executing review command...')
-  const reviewCommand = await safeExec('npx', [
-    `@polka-codes/cli@${inputs.cliVersion}`,
-    ...configArgs,
-    ...verboseFlags,
-    'review',
-    '--json',
-    '--pr',
-    String(inputs.prNumber),
-  ])
+  const reviewCommand = await safeExec('polka', [...configArgs, ...verboseFlags, 'review', '--json', '--pr', String(inputs.prNumber)])
 
   if (reviewCommand.exitCode !== 0) {
     const errorMessage = `Review command failed with exit code ${reviewCommand.exitCode}`
@@ -461,6 +452,28 @@ async function handleReview(inputs: ActionInputs): Promise<void> {
   }
 }
 
+async function installPolkaTools(inputs: ActionInputs): Promise<void> {
+  core.startGroup('Install Polka Codes tools')
+
+  if (inputs.runnerPayload) {
+    core.info(`Installing @polka-codes/runner@${inputs.cliVersion} globally...`)
+    const runnerInstallResult = await safeExec('npm', ['install', '-g', `@polka-codes/runner@${inputs.cliVersion}`])
+    if (runnerInstallResult.exitCode !== 0) {
+      throw new Error('Failed to install @polka-codes/runner globally.')
+    }
+    core.info('@polka-codes/runner installed successfully.')
+  } else {
+    core.info(`Installing @polka-codes/cli@${inputs.cliVersion} globally...`)
+    const cliInstallResult = await safeExec('npm', ['install', '-g', `@polka-codes/cli@${inputs.cliVersion}`])
+    if (cliInstallResult.exitCode !== 0) {
+      throw new Error('Failed to install @polka-codes/cli globally.')
+    }
+    core.info('@polka-codes/cli installed successfully.')
+  }
+
+  core.endGroup()
+}
+
 export async function run(): Promise<void> {
   try {
     const actionStart = Date.now()
@@ -488,6 +501,8 @@ export async function run(): Promise<void> {
     validateInputs(inputs)
     core.info(`Mode: ${inputs.runnerPayload ? 'remote-runner' : inputs.review ? 'review' : 'task'}`)
     core.endGroup()
+
+    await installPolkaTools(inputs)
 
     if (inputs.runnerPayload) {
       core.startGroup('Remote runner')
@@ -559,7 +574,7 @@ export async function run(): Promise<void> {
 
     core.startGroup('Run Polka Codes CLI')
     core.debug(`Task description length: ${taskDescription.length}`)
-    await safeExec('npx', [`@polka-codes/cli@${inputs.cliVersion}`, ...configArgs, ...verboseFlags, taskDescription])
+    await safeExec('polka', [...configArgs, ...verboseFlags, taskDescription])
     core.endGroup()
 
     core.startGroup('Commit and push changes')
@@ -567,7 +582,7 @@ export async function run(): Promise<void> {
     if (addResult.exitCode !== 0) {
       throw new Error(`git add failed with exit code ${addResult.exitCode}`)
     }
-    await safeExec('npx', [`@polka-codes/cli@${inputs.cliVersion}`, ...configArgs, ...verboseFlags, 'commit'])
+    await safeExec('polka', [...configArgs, ...verboseFlags, 'commit'])
     if (branchName) {
       core.info(`Pushing to branch: ${branchName}`)
       await safeExec('git', ['push', 'origin', branchName])
@@ -579,7 +594,7 @@ export async function run(): Promise<void> {
 
     core.startGroup('Open PR')
     const extraContent = inputs.issueNumber ? [`Closes #${inputs.issueNumber}`] : []
-    await safeExec('npx', [`@polka-codes/cli@${inputs.cliVersion}`, ...configArgs, ...verboseFlags, 'pr', ...extraContent])
+    await safeExec('polka', [...configArgs, ...verboseFlags, 'pr', ...extraContent])
     core.endGroup()
   } catch (error) {
     if (error instanceof Error) {
