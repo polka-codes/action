@@ -28225,7 +28225,7 @@ function gfmTableToMarkdown(options) {
       { character: "\r", inConstruct: "tableCell" },
       { character: `
 `, inConstruct: "tableCell" },
-      { atBreak: true, character: "|", after: "[	 :-]" },
+      { atBreak: true, character: "|", after: "[\t :-]" },
       { character: "|", inConstruct: "tableCell" },
       { atBreak: true, character: ":", after: "-" },
       { atBreak: true, character: "-", after: "[:|-]" }

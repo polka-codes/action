@@ -35,5 +35,5 @@ inputs:
     description: 'Verbosity level for CLI commands. Number (1-5) that translates to -v, -vv, -vvv, etc.'
     required: false
 runs:
-  using: 'node20'
+  using: 'node24'
   main: 'dist/index.js'
