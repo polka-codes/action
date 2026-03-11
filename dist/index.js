@@ -4,25 +4,43 @@ var __getProtoOf = Object.getPrototypeOf;
 var __defProp = Object.defineProperty;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
+function __accessProp(key) {
+  return this[key];
+}
+var __toESMCache_node;
+var __toESMCache_esm;
 var __toESM = (mod, isNodeMode, target) => {
+  var canCache = mod != null && typeof mod === "object";
+  if (canCache) {
+    var cache = isNodeMode ? __toESMCache_node ??= new WeakMap : __toESMCache_esm ??= new WeakMap;
+    var cached = cache.get(mod);
+    if (cached)
+      return cached;
+  }
   target = mod != null ? __create(__getProtoOf(mod)) : {};
   const to = isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target;
   for (let key of __getOwnPropNames(mod))
     if (!__hasOwnProp.call(to, key))
       __defProp(to, key, {
-        get: () => mod[key],
+        get: __accessProp.bind(mod, key),
         enumerable: true
       });
+  if (canCache)
+    cache.set(mod, to);
   return to;
 };
 var __commonJS = (cb, mod) => () => (mod || cb((mod = { exports: {} }).exports, mod), mod.exports);
+var __returnValue = (v) => v;
+function __exportSetter(name, newValue) {
+  this[name] = __returnValue.bind(null, newValue);
+}
 var __export = (target, all) => {
   for (var name in all)
     __defProp(target, name, {
       get: all[name],
       enumerable: true,
       configurable: true,
-      set: (newValue) => all[name] = () => newValue
+      set: __exportSetter.bind(all, name)
     });
 };
 var __require = /* @__PURE__ */ createRequire(import.meta.url);
@@ -3444,7 +3462,7 @@ var require_constants2 = __commonJS((exports, module) => {
     }
   })();
   var channel;
-  var structuredClone = globalThis.structuredClone ?? function structuredClone(value, options = undefined) {
+  var structuredClone = globalThis.structuredClone ?? function structuredClone2(value, options = undefined) {
     if (arguments.length === 0) {
       throw new TypeError("missing argument");
     }
@@ -8624,6 +8642,14 @@ var require_pool = __commonJS((exports, module) => {
       this[kOptions] = { ...util.deepClone(options), connect, allowH2 };
       this[kOptions].interceptors = options.interceptors ? { ...options.interceptors } : undefined;
       this[kFactory] = factory;
+      this.on("connectionError", (origin2, targets, error) => {
+        for (const target of targets) {
+          const idx = this[kClients].indexOf(target);
+          if (idx !== -1) {
+            this[kClients].splice(idx, 1);
+          }
+        }
+      });
     }
     [kGetDispatcher]() {
       let dispatcher = this[kClients].find((dispatcher2) => !dispatcher2[kNeedDrain]);
@@ -11142,6 +11168,7 @@ var require_headers = __commonJS((exports, module) => {
     isValidHeaderName,
     isValidHeaderValue
   } = require_util2();
+  var util = __require("util");
   var { webidl } = require_webidl();
   var assert = __require("assert");
   var kHeadersMap = Symbol("headers map");
@@ -11451,6 +11478,9 @@ var require_headers = __commonJS((exports, module) => {
     [Symbol.toStringTag]: {
       value: "Headers",
       configurable: true
+    },
+    [util.inspect.custom]: {
+      enumerable: false
     }
   });
   webidl.converters.HeadersInit = function(V) {
@@ -14720,8 +14750,6 @@ var require_constants4 = __commonJS((exports, module) => {
 
 // node_modules/undici/lib/cookies/util.js
 var require_util6 = __commonJS((exports, module) => {
-  var assert = __require("assert");
-  var { kHeadersList } = require_symbols();
   function isCTLExcludingHtab(value) {
     if (value.length === 0) {
       return false;
@@ -14851,23 +14879,13 @@ var require_util6 = __commonJS((exports, module) => {
     }
     return out.join("; ");
   }
-  var kHeadersListNode;
-  function getHeadersList(headers) {
-    if (headers[kHeadersList]) {
-      return headers[kHeadersList];
-    }
-    if (!kHeadersListNode) {
-      kHeadersListNode = Object.getOwnPropertySymbols(headers).find((symbol) => symbol.description === "headers list");
-      assert(kHeadersListNode, "Headers cannot be parsed");
-    }
-    const headersList = headers[kHeadersListNode];
-    assert(headersList);
-    return headersList;
-  }
   module.exports = {
     isCTLExcludingHtab,
-    stringify,
-    getHeadersList
+    validateCookieName,
+    validateCookiePath,
+    validateCookieValue,
+    toIMFDate,
+    stringify
   };
 });
 
@@ -14999,7 +15017,7 @@ var require_parse = __commonJS((exports, module) => {
 // node_modules/undici/lib/cookies/index.js
 var require_cookies = __commonJS((exports, module) => {
   var { parseSetCookie } = require_parse();
-  var { stringify, getHeadersList } = require_util6();
+  var { stringify } = require_util6();
   var { webidl } = require_webidl();
   var { Headers } = require_headers();
   function getCookies(headers) {
@@ -15031,11 +15049,11 @@ var require_cookies = __commonJS((exports, module) => {
   function getSetCookies(headers) {
     webidl.argumentLengthCheck(arguments, 1, { header: "getSetCookies" });
     webidl.brandCheck(headers, Headers, { strict: false });
-    const cookies = getHeadersList(headers).cookies;
+    const cookies = headers.getSetCookie();
     if (!cookies) {
       return [];
     }
-    return cookies.map((pair) => parseSetCookie(Array.isArray(pair) ? pair[1] : pair));
+    return cookies.map((pair) => parseSetCookie(pair));
   }
   function setCookie(headers, cookie) {
     webidl.argumentLengthCheck(arguments, 2, { header: "setCookie" });
@@ -18815,6 +18833,7 @@ var require_context = __commonJS((exports) => {
       this.action = process.env.GITHUB_ACTION;
       this.actor = process.env.GITHUB_ACTOR;
       this.job = process.env.GITHUB_JOB;
+      this.runAttempt = parseInt(process.env.GITHUB_RUN_ATTEMPT, 10);
       this.runNumber = parseInt(process.env.GITHUB_RUN_NUMBER, 10);
       this.runId = parseInt(process.env.GITHUB_RUN_ID, 10);
       this.apiUrl = (_a = process.env.GITHUB_API_URL) !== null && _a !== undefined ? _a : `https://api.github.com`;
@@ -18940,7 +18959,7 @@ var require_utils3 = __commonJS((exports) => {
   exports.getApiBaseUrl = getApiBaseUrl;
 });
 
-// node_modules/@actions/github/node_modules/@octokit/core/node_modules/universal-user-agent/dist-node/index.js
+// node_modules/universal-user-agent/dist-node/index.js
 var require_dist_node = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   function getUserAgent() {
@@ -18955,7 +18974,7 @@ var require_dist_node = __commonJS((exports) => {
   exports.getUserAgent = getUserAgent;
 });
 
-// node_modules/@actions/github/node_modules/@octokit/core/node_modules/before-after-hook/lib/register.js
+// node_modules/before-after-hook/lib/register.js
 var require_register = __commonJS((exports, module) => {
   module.exports = register;
   function register(state, name, method, options) {
@@ -18981,7 +19000,7 @@ var require_register = __commonJS((exports, module) => {
   }
 });
 
-// node_modules/@actions/github/node_modules/@octokit/core/node_modules/before-after-hook/lib/add.js
+// node_modules/before-after-hook/lib/add.js
 var require_add = __commonJS((exports, module) => {
   module.exports = addHook;
   function addHook(state, kind, name, hook) {
@@ -19019,7 +19038,7 @@ var require_add = __commonJS((exports, module) => {
   }
 });
 
-// node_modules/@actions/github/node_modules/@octokit/core/node_modules/before-after-hook/lib/remove.js
+// node_modules/before-after-hook/lib/remove.js
 var require_remove = __commonJS((exports, module) => {
   module.exports = removeHook;
   function removeHook(state, name, method) {
@@ -19036,7 +19055,7 @@ var require_remove = __commonJS((exports, module) => {
   }
 });
 
-// node_modules/@actions/github/node_modules/@octokit/core/node_modules/before-after-hook/index.js
+// node_modules/before-after-hook/index.js
 var require_before_after_hook = __commonJS((exports, module) => {
   var register = require_register();
   var addHook = require_add();
@@ -19085,7 +19104,7 @@ var require_before_after_hook = __commonJS((exports, module) => {
   module.exports.Collection = Hook.Collection;
 });
 
-// node_modules/@actions/github/node_modules/@octokit/core/node_modules/@octokit/request/node_modules/@octokit/endpoint/dist-node/index.js
+// node_modules/@octokit/endpoint/dist-node/index.js
 var require_dist_node2 = __commonJS((exports, module) => {
   var __defProp2 = Object.defineProperty;
   var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -19110,7 +19129,7 @@ var require_dist_node2 = __commonJS((exports, module) => {
   });
   module.exports = __toCommonJS(dist_src_exports);
   var import_universal_user_agent = require_dist_node();
-  var VERSION = "9.0.5";
+  var VERSION = "9.0.6";
   var userAgent = `octokit-endpoint.js/${VERSION} ${(0, import_universal_user_agent.getUserAgent)()}`;
   var DEFAULTS = {
     method: "GET",
@@ -19197,9 +19216,9 @@ var require_dist_node2 = __commonJS((exports, module) => {
       return `${name}=${encodeURIComponent(parameters[name])}`;
     }).join("&");
   }
-  var urlVariableRegex = /\{[^}]+\}/g;
+  var urlVariableRegex = /\{[^{}}]+\}/g;
   function removeNonChars(variableName) {
-    return variableName.replace(/^\W+|\W+$/g, "").split(/,/);
+    return variableName.replace(/(?:^\W+)|(?:(?<!\W)\W+$)/g, "").split(/,/);
   }
   function extractUrlVariableNames(url) {
     const matches = url.match(urlVariableRegex);
@@ -19367,7 +19386,7 @@ var require_dist_node2 = __commonJS((exports, module) => {
       }
       if (url.endsWith("/graphql")) {
         if (options.mediaType.previews?.length) {
-          const previewsFromAcceptHeader = headers.accept.match(/[\w-]+(?=-preview)/g) || [];
+          const previewsFromAcceptHeader = headers.accept.match(/(?<![\w-])[\w-]+(?=-preview)/g) || [];
           headers.accept = previewsFromAcceptHeader.concat(options.mediaType.previews).map((preview) => {
             const format = options.mediaType.format ? `.${options.mediaType.format}` : "+json";
             return `application/vnd.github.${preview}-preview${format}`;
@@ -19498,7 +19517,7 @@ var require_once = __commonJS((exports, module) => {
   }
 });
 
-// node_modules/@actions/github/node_modules/@octokit/core/node_modules/@octokit/request-error/dist-node/index.js
+// node_modules/@octokit/request-error/dist-node/index.js
 var require_dist_node4 = __commonJS((exports, module) => {
   var __create2 = Object.create;
   var __defProp2 = Object.defineProperty;
@@ -19548,7 +19567,7 @@ var require_dist_node4 = __commonJS((exports, module) => {
       const requestCopy = Object.assign({}, options.request);
       if (options.request.headers.authorization) {
         requestCopy.headers = Object.assign({}, options.request.headers, {
-          authorization: options.request.headers.authorization.replace(/ .*$/, " [REDACTED]")
+          authorization: options.request.headers.authorization.replace(/(?<! ) .*$/, " [REDACTED]")
         });
       }
       requestCopy.url = requestCopy.url.replace(/\bclient_secret=\w+/g, "client_secret=[REDACTED]").replace(/\baccess_token=\w+/g, "access_token=[REDACTED]");
@@ -19569,7 +19588,7 @@ var require_dist_node4 = __commonJS((exports, module) => {
   };
 });
 
-// node_modules/@actions/github/node_modules/@octokit/core/node_modules/@octokit/request/dist-node/index.js
+// node_modules/@octokit/request/dist-node/index.js
 var require_dist_node5 = __commonJS((exports, module) => {
   var __defProp2 = Object.defineProperty;
   var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -19595,7 +19614,7 @@ var require_dist_node5 = __commonJS((exports, module) => {
   module.exports = __toCommonJS(dist_src_exports);
   var import_endpoint = require_dist_node2();
   var import_universal_user_agent = require_dist_node();
-  var VERSION = "8.4.0";
+  var VERSION = "8.4.1";
   function isPlainObject(value) {
     if (typeof value !== "object" || value === null)
       return false;
@@ -19642,7 +19661,7 @@ var require_dist_node5 = __commonJS((exports, module) => {
         headers[keyAndValue[0]] = keyAndValue[1];
       }
       if ("deprecation" in headers) {
-        const matches = headers.link && headers.link.match(/<([^>]+)>; rel="deprecation"/);
+        const matches = headers.link && headers.link.match(/<([^<>]+)>; rel="deprecation"/);
         const deprecationLink = matches && matches.pop();
         log.warn(`[@octokit/request] "${requestOptions.method} ${requestOptions.url}" is deprecated. It is scheduled to be removed on ${headers.sunset}${deprecationLink ? `. See ${deprecationLink}` : ""}`);
       }
@@ -19768,7 +19787,7 @@ var require_dist_node5 = __commonJS((exports, module) => {
   });
 });
 
-// node_modules/@actions/github/node_modules/@octokit/core/node_modules/@octokit/graphql/dist-node/index.js
+// node_modules/@octokit/graphql/dist-node/index.js
 var require_dist_node6 = __commonJS((exports, module) => {
   var __defProp2 = Object.defineProperty;
   var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -19787,16 +19806,16 @@ var require_dist_node6 = __commonJS((exports, module) => {
     return to;
   };
   var __toCommonJS = (mod) => __copyProps(__defProp2({}, "__esModule", { value: true }), mod);
-  var dist_src_exports = {};
-  __export2(dist_src_exports, {
+  var index_exports = {};
+  __export2(index_exports, {
     GraphqlResponseError: () => GraphqlResponseError,
     graphql: () => graphql2,
     withCustomRequest: () => withCustomRequest
   });
-  module.exports = __toCommonJS(dist_src_exports);
+  module.exports = __toCommonJS(index_exports);
   var import_request3 = require_dist_node5();
   var import_universal_user_agent = require_dist_node();
-  var VERSION = "7.1.0";
+  var VERSION = "7.1.1";
   var import_request2 = require_dist_node5();
   var import_request = require_dist_node5();
   function _buildMessageForResponseErrors(data) {
@@ -19892,7 +19911,7 @@ var require_dist_node6 = __commonJS((exports, module) => {
   }
 });
 
-// node_modules/@actions/github/node_modules/@octokit/core/node_modules/@octokit/auth-token/dist-node/index.js
+// node_modules/@octokit/auth-token/dist-node/index.js
 var require_dist_node7 = __commonJS((exports, module) => {
   var __defProp2 = Object.defineProperty;
   var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -19955,7 +19974,7 @@ var require_dist_node7 = __commonJS((exports, module) => {
   };
 });
 
-// node_modules/@actions/github/node_modules/@octokit/core/dist-node/index.js
+// node_modules/@octokit/core/dist-node/index.js
 var require_dist_node8 = __commonJS((exports, module) => {
   var __defProp2 = Object.defineProperty;
   var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -19974,20 +19993,35 @@ var require_dist_node8 = __commonJS((exports, module) => {
     return to;
   };
   var __toCommonJS = (mod) => __copyProps(__defProp2({}, "__esModule", { value: true }), mod);
-  var dist_src_exports = {};
-  __export2(dist_src_exports, {
+  var index_exports = {};
+  __export2(index_exports, {
     Octokit: () => Octokit
   });
-  module.exports = __toCommonJS(dist_src_exports);
+  module.exports = __toCommonJS(index_exports);
   var import_universal_user_agent = require_dist_node();
   var import_before_after_hook = require_before_after_hook();
   var import_request = require_dist_node5();
   var import_graphql = require_dist_node6();
   var import_auth_token = require_dist_node7();
-  var VERSION = "5.2.0";
+  var VERSION = "5.2.2";
   var noop = () => {};
   var consoleWarn = console.warn.bind(console);
   var consoleError = console.error.bind(console);
+  function createLogger(logger = {}) {
+    if (typeof logger.debug !== "function") {
+      logger.debug = noop;
+    }
+    if (typeof logger.info !== "function") {
+      logger.info = noop;
+    }
+    if (typeof logger.warn !== "function") {
+      logger.warn = consoleWarn;
+    }
+    if (typeof logger.error !== "function") {
+      logger.error = consoleError;
+    }
+    return logger;
+  }
   var userAgentTrail = `octokit-core.js/${VERSION} ${(0, import_universal_user_agent.getUserAgent)()}`;
   var Octokit = class {
     static {
@@ -20045,12 +20079,7 @@ var require_dist_node8 = __commonJS((exports, module) => {
       }
       this.request = import_request.request.defaults(requestDefaults);
       this.graphql = (0, import_graphql.withCustomRequest)(this.request).defaults(requestDefaults);
-      this.log = Object.assign({
-        debug: noop,
-        info: noop,
-        warn: consoleWarn,
-        error: consoleError
-      }, options.log);
+      this.log = createLogger(options.log);
       this.hook = hook;
       if (!options.authStrategy) {
         if (!options.auth) {
@@ -20081,7 +20110,7 @@ var require_dist_node8 = __commonJS((exports, module) => {
   };
 });
 
-// node_modules/@actions/github/node_modules/@octokit/plugin-rest-endpoint-methods/dist-node/index.js
+// node_modules/@octokit/plugin-rest-endpoint-methods/dist-node/index.js
 var require_dist_node9 = __commonJS((exports, module) => {
   var __defProp2 = Object.defineProperty;
   var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -22218,7 +22247,7 @@ var require_dist_node9 = __commonJS((exports, module) => {
   legacyRestEndpointMethods.VERSION = VERSION;
 });
 
-// node_modules/@actions/github/node_modules/@octokit/plugin-paginate-rest/dist-node/index.js
+// node_modules/@octokit/plugin-paginate-rest/dist-node/index.js
 var require_dist_node10 = __commonJS((exports, module) => {
   var __defProp2 = Object.defineProperty;
   var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -22245,7 +22274,7 @@ var require_dist_node10 = __commonJS((exports, module) => {
     paginatingEndpoints: () => paginatingEndpoints
   });
   module.exports = __toCommonJS(dist_src_exports);
-  var VERSION = "9.2.1";
+  var VERSION = "9.2.2";
   function normalizePaginatedListResponse(response) {
     if (!response.data) {
       return {
@@ -22288,7 +22317,7 @@ var require_dist_node10 = __commonJS((exports, module) => {
           try {
             const response = await requestMethod({ method, url, headers });
             const normalizedResponse = normalizePaginatedListResponse(response);
-            url = ((normalizedResponse.headers.link || "").match(/<([^>]+)>;\s*rel="next"/) || [])[1];
+            url = ((normalizedResponse.headers.link || "").match(/<([^<>]+)>;\s*rel="next"/) || [])[1];
             return { value: normalizedResponse };
           } catch (error) {
             if (error.status !== 409)
@@ -22905,7 +22934,7 @@ var require_common = __commonJS((exports, module) => {
       createDebug.namespaces = namespaces;
       createDebug.names = [];
       createDebug.skips = [];
-      const split = (typeof namespaces === "string" ? namespaces : "").trim().replace(" ", ",").split(",").filter(Boolean);
+      const split = (typeof namespaces === "string" ? namespaces : "").trim().replace(/\s+/g, ",").split(",").filter(Boolean);
       for (const ns of split) {
         if (ns[0] === "-") {
           createDebug.skips.push(ns.slice(1));
@@ -23115,7 +23144,7 @@ var require_browser = __commonJS((exports, module) => {
   function load() {
     let r;
     try {
-      r = exports.storage.getItem("debug");
+      r = exports.storage.getItem("debug") || exports.storage.getItem("DEBUG");
     } catch (error) {}
     if (!r && typeof process !== "undefined" && "env" in process) {
       r = process.env.DEBUG;
@@ -23138,115 +23167,6 @@ var require_browser = __commonJS((exports, module) => {
   };
 });
 
-// node_modules/has-flag/index.js
-var require_has_flag = __commonJS((exports, module) => {
-  module.exports = (flag, argv = process.argv) => {
-    const prefix = flag.startsWith("-") ? "" : flag.length === 1 ? "-" : "--";
-    const position = argv.indexOf(prefix + flag);
-    const terminatorPosition = argv.indexOf("--");
-    return position !== -1 && (terminatorPosition === -1 || position < terminatorPosition);
-  };
-});
-
-// node_modules/supports-color/index.js
-var require_supports_color = __commonJS((exports, module) => {
-  var os = __require("os");
-  var tty = __require("tty");
-  var hasFlag = require_has_flag();
-  var { env } = process;
-  var forceColor;
-  if (hasFlag("no-color") || hasFlag("no-colors") || hasFlag("color=false") || hasFlag("color=never")) {
-    forceColor = 0;
-  } else if (hasFlag("color") || hasFlag("colors") || hasFlag("color=true") || hasFlag("color=always")) {
-    forceColor = 1;
-  }
-  if ("FORCE_COLOR" in env) {
-    if (env.FORCE_COLOR === "true") {
-      forceColor = 1;
-    } else if (env.FORCE_COLOR === "false") {
-      forceColor = 0;
-    } else {
-      forceColor = env.FORCE_COLOR.length === 0 ? 1 : Math.min(parseInt(env.FORCE_COLOR, 10), 3);
-    }
-  }
-  function translateLevel(level) {
-    if (level === 0) {
-      return false;
-    }
-    return {
-      level,
-      hasBasic: true,
-      has256: level >= 2,
-      has16m: level >= 3
-    };
-  }
-  function supportsColor(haveStream, streamIsTTY) {
-    if (forceColor === 0) {
-      return 0;
-    }
-    if (hasFlag("color=16m") || hasFlag("color=full") || hasFlag("color=truecolor")) {
-      return 3;
-    }
-    if (hasFlag("color=256")) {
-      return 2;
-    }
-    if (haveStream && !streamIsTTY && forceColor === undefined) {
-      return 0;
-    }
-    const min = forceColor || 0;
-    if (env.TERM === "dumb") {
-      return min;
-    }
-    if (process.platform === "win32") {
-      const osRelease = os.release().split(".");
-      if (Number(osRelease[0]) >= 10 && Number(osRelease[2]) >= 10586) {
-        return Number(osRelease[2]) >= 14931 ? 3 : 2;
-      }
-      return 1;
-    }
-    if ("CI" in env) {
-      if (["TRAVIS", "CIRCLECI", "APPVEYOR", "GITLAB_CI", "GITHUB_ACTIONS", "BUILDKITE"].some((sign) => (sign in env)) || env.CI_NAME === "codeship") {
-        return 1;
-      }
-      return min;
-    }
-    if ("TEAMCITY_VERSION" in env) {
-      return /^(9\.(0*[1-9]\d*)\.|\d{2,}\.)/.test(env.TEAMCITY_VERSION) ? 1 : 0;
-    }
-    if (env.COLORTERM === "truecolor") {
-      return 3;
-    }
-    if ("TERM_PROGRAM" in env) {
-      const version = parseInt((env.TERM_PROGRAM_VERSION || "").split(".")[0], 10);
-      switch (env.TERM_PROGRAM) {
-        case "iTerm.app":
-          return version >= 3 ? 3 : 2;
-        case "Apple_Terminal":
-          return 2;
-      }
-    }
-    if (/-256(color)?$/i.test(env.TERM)) {
-      return 2;
-    }
-    if (/^screen|^xterm|^vt100|^vt220|^rxvt|color|ansi|cygwin|linux/i.test(env.TERM)) {
-      return 1;
-    }
-    if ("COLORTERM" in env) {
-      return 1;
-    }
-    return min;
-  }
-  function getSupportLevel(stream) {
-    const level = supportsColor(stream, stream && stream.isTTY);
-    return translateLevel(level);
-  }
-  module.exports = {
-    supportsColor: getSupportLevel,
-    stdout: translateLevel(supportsColor(true, tty.isatty(1))),
-    stderr: translateLevel(supportsColor(true, tty.isatty(2)))
-  };
-});
-
 // node_modules/debug/src/node.js
 var require_node = __commonJS((exports, module) => {
   var tty = __require("tty");
@@ -23260,7 +23180,7 @@ var require_node = __commonJS((exports, module) => {
   exports.destroy = util.deprecate(() => {}, "Instance method `debug.destroy()` is deprecated and no longer does anything. It will be removed in the next major version of `debug`.");
   exports.colors = [6, 2, 3, 4, 5, 1];
   try {
-    const supportsColor = require_supports_color();
+    const supportsColor = (()=>{throw new Error("Cannot require module "+"supports-color");})();
     if (supportsColor && (supportsColor.stderr || supportsColor).level >= 2) {
       exports.colors = [
         20,
@@ -23433,13 +23353,13 @@ var require_extend = __commonJS((exports, module) => {
   var toStr = Object.prototype.toString;
   var defineProperty = Object.defineProperty;
   var gOPD = Object.getOwnPropertyDescriptor;
-  var isArray = function isArray(arr) {
+  var isArray = function isArray2(arr) {
     if (typeof Array.isArray === "function") {
       return Array.isArray(arr);
     }
     return toStr.call(arr) === "[object Array]";
   };
-  var isPlainObject = function isPlainObject(obj) {
+  var isPlainObject = function isPlainObject2(obj) {
     if (!obj || toStr.call(obj) !== "[object Object]") {
       return false;
     }
@@ -23452,7 +23372,7 @@ var require_extend = __commonJS((exports, module) => {
     for (key in obj) {}
     return typeof key === "undefined" || hasOwn.call(obj, key);
   };
-  var setProperty = function setProperty(target, options) {
+  var setProperty = function setProperty2(target, options) {
     if (defineProperty && options.name === "__proto__") {
       defineProperty(target, options.name, {
         enumerable: true,
@@ -23464,7 +23384,7 @@ var require_extend = __commonJS((exports, module) => {
       target[options.name] = options.newValue;
     }
   };
-  var getProperty = function getProperty(obj, name) {
+  var getProperty = function getProperty2(obj, name) {
     if (name === "__proto__") {
       if (!hasOwn.call(obj, name)) {
         return;
@@ -23974,7 +23894,7 @@ function regexCheck(regex) {
   }
 }
 
-// node_modules/mdast-util-find-and-replace/node_modules/escape-string-regexp/index.js
+// node_modules/escape-string-regexp/index.js
 function escapeStringRegexp(string) {
   if (typeof string !== "string") {
     throw new TypeError("Expected a string");
@@ -23991,7 +23911,7 @@ var convert = function(test) {
     return castFactory(test);
   }
   if (typeof test === "object") {
-    return Array.isArray(test) ? anyFactory(test) : propsFactory(test);
+    return Array.isArray(test) ? anyFactory(test) : propertiesFactory(test);
   }
   if (typeof test === "string") {
     return typeFactory(test);
@@ -24014,7 +23934,7 @@ function anyFactory(tests) {
     return false;
   }
 }
-function propsFactory(check) {
+function propertiesFactory(check) {
   const checkAsRecord = check;
   return castFactory(all);
   function all(node) {
@@ -33395,7 +33315,7 @@ function index(value) {
 // node_modules/mdast-util-from-markdown/dev/lib/index.js
 var own4 = {}.hasOwnProperty;
 function fromMarkdown(value, encoding, options) {
-  if (typeof encoding !== "string") {
+  if (encoding && typeof encoding === "object") {
     options = encoding;
     encoding = undefined;
   }
@@ -33523,7 +33443,7 @@ function compiler(options) {
           listStack.push(index2);
         } else {
           const tail = listStack.pop();
-          ok(typeof tail === "number", "expected list ot be open");
+          ok(typeof tail === "number", "expected list to be open");
           index2 = prepareList(events, tail, index2);
         }
       }
@@ -34268,7 +34188,7 @@ class VFileMessage extends Error {
     this.cause = options.cause || undefined;
     this.column = start ? start.column : undefined;
     this.fatal = undefined;
-    this.file;
+    this.file = "";
     this.message = reason;
     this.line = start ? start.line : undefined;
     this.name = stringifyPosition(options.place) || "1:1";
@@ -34277,10 +34197,10 @@ class VFileMessage extends Error {
     this.ruleId = options.ruleId || undefined;
     this.source = options.source || undefined;
     this.stack = legacyCause && options.cause && typeof options.cause.stack === "string" ? options.cause.stack : "";
-    this.actual;
-    this.expected;
-    this.note;
-    this.url;
+    this.actual = undefined;
+    this.expected = undefined;
+    this.note = undefined;
+    this.url = undefined;
   }
 }
 VFileMessage.prototype.file = "";
@@ -35106,6 +35026,30 @@ var parseJson = (raw, context2) => {
     throw e instanceof Error ? e : new Error("JSON parse error");
   }
 };
+var extractJsonArray = (raw) => {
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed))
+      return parsed;
+  } catch {}
+  const fenceMatch = raw.match(/```(?:json)?\s*\n([\s\S]*?)\n\s*```/);
+  if (fenceMatch) {
+    try {
+      const parsed = JSON.parse(fenceMatch[1]);
+      if (Array.isArray(parsed))
+        return parsed;
+    } catch {}
+  }
+  const bracketMatch = raw.match(/\[[\s\S]*\]/);
+  if (bracketMatch) {
+    try {
+      const parsed = JSON.parse(bracketMatch[0]);
+      if (Array.isArray(parsed))
+        return parsed;
+    } catch {}
+  }
+  return null;
+};
 var remoteRunner = async (inputs) => {
   const payload = parseJson(inputs.runnerPayload, "runnerPayload");
   if (payload.ref) {
@@ -35167,6 +35111,119 @@ var findBestHunkForReview = (fileInfo, reviewStartLine, reviewEndLine, maxDistan
   }
   return null;
 };
+async function fetchBotReviewThreads(octokit, owner, repo, prNumber) {
+  const viewerResult = await octokit.graphql("query { viewer { login } }");
+  const botLogin = viewerResult.viewer.login;
+  core.info(`Bot user identified as: ${botLogin}`);
+  const threads = [];
+  let hasNextPage = true;
+  let cursor = null;
+  while (hasNextPage) {
+    const afterClause = cursor ? `, after: "${cursor}"` : "";
+    const query2 = `
+      query($owner: String!, $repo: String!, $prNumber: Int!) {
+        repository(owner: $owner, name: $repo) {
+          pullRequest(number: $prNumber) {
+            reviewThreads(first: 100${afterClause}) {
+              pageInfo { hasNextPage endCursor }
+              nodes {
+                id
+                isResolved
+                isOutdated
+                path
+                line
+                comments(first: 10) {
+                  nodes {
+                    author { login }
+                    body
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    `;
+    const result = await octokit.graphql(query2, { owner, repo, prNumber });
+    const page = result.repository.pullRequest.reviewThreads;
+    for (const node2 of page.nodes) {
+      const firstComment = node2.comments.nodes[0];
+      if (firstComment?.author?.login === botLogin) {
+        threads.push({
+          threadId: node2.id,
+          path: node2.path,
+          line: node2.line,
+          isResolved: node2.isResolved,
+          isOutdated: node2.isOutdated,
+          comments: node2.comments.nodes.map((c) => ({
+            author: c.author?.login ?? "unknown",
+            body: c.body
+          }))
+        });
+      }
+    }
+    hasNextPage = page.pageInfo.hasNextPage;
+    cursor = page.pageInfo.endCursor;
+  }
+  core.info(`Found ${threads.length} bot review thread(s) on PR #${prNumber}`);
+  return threads;
+}
+async function reEvaluateThreads(threads, configArgs, verboseFlags) {
+  const unresolvedThreads = threads.filter((t) => !t.isResolved);
+  if (unresolvedThreads.length === 0) {
+    core.info("No unresolved bot threads to re-evaluate.");
+    return [];
+  }
+  core.info(`Re-evaluating ${unresolvedThreads.length} unresolved bot thread(s)...`);
+  const summaries = unresolvedThreads.map((t) => ({
+    threadId: t.threadId,
+    file: t.path,
+    line: t.line,
+    comments: t.comments.map((c) => ({ author: c.author, body: c.body }))
+  }));
+  const taskPrompt = [
+    "Read the current code and determine which of the following review threads have been addressed.",
+    "For each thread, decide if it should be resolved.",
+    `Output ONLY a JSON array with objects: {"threadId": string, "shouldResolve": boolean, "reason": string}`,
+    "",
+    "Threads to evaluate:",
+    JSON.stringify(summaries, null, 2)
+  ].join(`
+`);
+  const result = await safeExec("polka", [...configArgs, ...verboseFlags, taskPrompt]);
+  if (result.exitCode !== 0) {
+    core.warning(`Re-evaluation command failed with exit code ${result.exitCode}. Skipping re-evaluation.`);
+    return [];
+  }
+  const parsed = extractJsonArray(result.stdout);
+  if (!parsed) {
+    core.warning("Failed to parse re-evaluation JSON output. Skipping re-evaluation.");
+    core.debug(`Raw output: ${result.stdout}`);
+    return [];
+  }
+  core.info(`Re-evaluation complete: ${parsed.filter((r) => r.shouldResolve).length} thread(s) to resolve.`);
+  return parsed;
+}
+async function resolveThreads(octokit, results) {
+  const toResolve = results.filter((r) => r.shouldResolve);
+  if (toResolve.length === 0) {
+    core.info("No threads to resolve.");
+    return;
+  }
+  core.info(`Resolving ${toResolve.length} thread(s)...`);
+  for (const result of toResolve) {
+    try {
+      await octokit.graphql(`mutation($threadId: ID!) {
+          resolveReviewThread(input: { threadId: $threadId }) {
+            thread { id isResolved }
+          }
+        }`, { threadId: result.threadId });
+      core.info(`Resolved thread ${result.threadId}: ${result.reason}`);
+    } catch (error2) {
+      core.warning(`Failed to resolve thread ${result.threadId}: ${error2 instanceof Error ? error2.message : "Unknown error"}`);
+    }
+  }
+}
 async function handleReview(inputs) {
   core.info("Starting review process...");
   const octokit = github.getOctokit(process.env.GITHUB_TOKEN ?? "");
@@ -35209,6 +35266,21 @@ async function handleReview(inputs) {
   const verboseFlags = generateVerboseFlags(inputs.verbose);
   if (verboseFlags.length > 0) {
     core.info(`Using verbosity flags: ${verboseFlags.join(" ")}`);
+  }
+  if (inputs.prNumber) {
+    try {
+      const threads = await fetchBotReviewThreads(octokit, owner, repo, inputs.prNumber);
+      const unresolvedThreads = threads.filter((t) => !t.isResolved);
+      if (unresolvedThreads.length > 0) {
+        core.info(`Found ${unresolvedThreads.length} unresolved bot thread(s). Running re-evaluation...`);
+        const reReviewResults = await reEvaluateThreads(threads, configArgs, verboseFlags);
+        await resolveThreads(octokit, reReviewResults);
+      } else {
+        core.info("No unresolved bot threads found. Skipping re-evaluation.");
+      }
+    } catch (error2) {
+      core.warning(`Re-evaluation of existing threads failed: ${error2 instanceof Error ? error2.message : "Unknown error"}. Proceeding with fresh review.`);
+    }
   }
   core.info("Executing review command...");
   const reviewCommand = await safeExec("polka", [...configArgs, ...verboseFlags, "review", "--json", "--pr", String(inputs.prNumber)]);

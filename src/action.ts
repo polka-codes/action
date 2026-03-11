@@ -18,6 +18,26 @@ interface ReviewOutput {
   specificReviews: SpecificReview[]
 }
 
+interface ReviewThreadComment {
+  author: string
+  body: string
+}
+
+interface ReviewThread {
+  threadId: string
+  path: string
+  line: number | null
+  isResolved: boolean
+  isOutdated: boolean
+  comments: ReviewThreadComment[]
+}
+
+interface ReReviewResult {
+  threadId: string
+  shouldResolve: boolean
+  reason: string
+}
+
 interface ActionInputs {
   issueNumber?: number
   prNumber?: number
@@ -164,6 +184,34 @@ const parseJson = <T>(raw: string, context: string): T => {
   }
 }
 
+const extractJsonArray = <T>(raw: string): T[] | null => {
+  // Try direct parse
+  try {
+    const parsed = JSON.parse(raw)
+    if (Array.isArray(parsed)) return parsed as T[]
+  } catch {}
+
+  // Try extracting from markdown code fences
+  const fenceMatch = raw.match(/```(?:json)?\s*\n([\s\S]*?)\n\s*```/)
+  if (fenceMatch) {
+    try {
+      const parsed = JSON.parse(fenceMatch[1])
+      if (Array.isArray(parsed)) return parsed as T[]
+    } catch {}
+  }
+
+  // Try finding bare [...] pattern
+  const bracketMatch = raw.match(/\[[\s\S]*\]/)
+  if (bracketMatch) {
+    try {
+      const parsed = JSON.parse(bracketMatch[0])
+      if (Array.isArray(parsed)) return parsed as T[]
+    } catch {}
+  }
+
+  return null
+}
+
 const remoteRunner = async (inputs: { runnerPayload: string; cliVersion: string; runnerApiUrl: string }) => {
   const payload = parseJson<{ ref?: string; taskId: string; sessionToken: string }>(inputs.runnerPayload, 'runnerPayload')
   if (payload.ref) {
@@ -263,6 +311,160 @@ const findBestHunkForReview = (
   return null
 }
 
+async function fetchBotReviewThreads(
+  octokit: ReturnType<typeof github.getOctokit>,
+  owner: string,
+  repo: string,
+  prNumber: number,
+): Promise<ReviewThread[]> {
+  // Get the authenticated bot user login
+  const viewerResult = await octokit.graphql<{ viewer: { login: string } }>('query { viewer { login } }')
+  const botLogin = viewerResult.viewer.login
+  core.info(`Bot user identified as: ${botLogin}`)
+
+  const threads: ReviewThread[] = []
+  let hasNextPage = true
+  let cursor: string | null = null
+
+  while (hasNextPage) {
+    const afterClause: string = cursor ? `, after: "${cursor}"` : ''
+    const query: string = `
+      query($owner: String!, $repo: String!, $prNumber: Int!) {
+        repository(owner: $owner, name: $repo) {
+          pullRequest(number: $prNumber) {
+            reviewThreads(first: 100${afterClause}) {
+              pageInfo { hasNextPage endCursor }
+              nodes {
+                id
+                isResolved
+                isOutdated
+                path
+                line
+                comments(first: 10) {
+                  nodes {
+                    author { login }
+                    body
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    `
+    const result = await octokit.graphql<{
+      repository: {
+        pullRequest: {
+          reviewThreads: {
+            pageInfo: { hasNextPage: boolean; endCursor: string | null }
+            nodes: Array<{
+              id: string
+              isResolved: boolean
+              isOutdated: boolean
+              path: string
+              line: number | null
+              comments: { nodes: Array<{ author: { login: string } | null; body: string }> }
+            }>
+          }
+        }
+      }
+    }>(query, { owner, repo, prNumber })
+
+    const page = result.repository.pullRequest.reviewThreads
+    for (const node of page.nodes) {
+      const firstComment = node.comments.nodes[0]
+      if (firstComment?.author?.login === botLogin) {
+        threads.push({
+          threadId: node.id,
+          path: node.path,
+          line: node.line,
+          isResolved: node.isResolved,
+          isOutdated: node.isOutdated,
+          comments: node.comments.nodes.map((c: { author: { login: string } | null; body: string }) => ({
+            author: c.author?.login ?? 'unknown',
+            body: c.body,
+          })),
+        })
+      }
+    }
+
+    hasNextPage = page.pageInfo.hasNextPage
+    cursor = page.pageInfo.endCursor
+  }
+
+  core.info(`Found ${threads.length} bot review thread(s) on PR #${prNumber}`)
+  return threads
+}
+
+async function reEvaluateThreads(threads: ReviewThread[], configArgs: string[], verboseFlags: string[]): Promise<ReReviewResult[]> {
+  const unresolvedThreads = threads.filter((t) => !t.isResolved)
+  if (unresolvedThreads.length === 0) {
+    core.info('No unresolved bot threads to re-evaluate.')
+    return []
+  }
+
+  core.info(`Re-evaluating ${unresolvedThreads.length} unresolved bot thread(s)...`)
+
+  const summaries = unresolvedThreads.map((t) => ({
+    threadId: t.threadId,
+    file: t.path,
+    line: t.line,
+    comments: t.comments.map((c) => ({ author: c.author, body: c.body })),
+  }))
+
+  const taskPrompt = [
+    'Read the current code and determine which of the following review threads have been addressed.',
+    'For each thread, decide if it should be resolved.',
+    `Output ONLY a JSON array with objects: {"threadId": string, "shouldResolve": boolean, "reason": string}`,
+    '',
+    'Threads to evaluate:',
+    JSON.stringify(summaries, null, 2),
+  ].join('\n')
+
+  const result = await safeExec('polka', [...configArgs, ...verboseFlags, taskPrompt])
+
+  if (result.exitCode !== 0) {
+    core.warning(`Re-evaluation command failed with exit code ${result.exitCode}. Skipping re-evaluation.`)
+    return []
+  }
+
+  const parsed = extractJsonArray<ReReviewResult>(result.stdout)
+  if (!parsed) {
+    core.warning('Failed to parse re-evaluation JSON output. Skipping re-evaluation.')
+    core.debug(`Raw output: ${result.stdout}`)
+    return []
+  }
+
+  core.info(`Re-evaluation complete: ${parsed.filter((r) => r.shouldResolve).length} thread(s) to resolve.`)
+  return parsed
+}
+
+async function resolveThreads(octokit: ReturnType<typeof github.getOctokit>, results: ReReviewResult[]): Promise<void> {
+  const toResolve = results.filter((r) => r.shouldResolve)
+  if (toResolve.length === 0) {
+    core.info('No threads to resolve.')
+    return
+  }
+
+  core.info(`Resolving ${toResolve.length} thread(s)...`)
+
+  for (const result of toResolve) {
+    try {
+      await octokit.graphql(
+        `mutation($threadId: ID!) {
+          resolveReviewThread(input: { threadId: $threadId }) {
+            thread { id isResolved }
+          }
+        }`,
+        { threadId: result.threadId },
+      )
+      core.info(`Resolved thread ${result.threadId}: ${result.reason}`)
+    } catch (error) {
+      core.warning(`Failed to resolve thread ${result.threadId}: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  }
+}
+
 async function handleReview(inputs: ActionInputs): Promise<void> {
   core.info('Starting review process...')
   const octokit = github.getOctokit(process.env.GITHUB_TOKEN ?? '')
@@ -313,6 +515,25 @@ async function handleReview(inputs: ActionInputs): Promise<void> {
   const verboseFlags = generateVerboseFlags(inputs.verbose)
   if (verboseFlags.length > 0) {
     core.info(`Using verbosity flags: ${verboseFlags.join(' ')}`)
+  }
+
+  // Re-evaluate existing bot review threads (best-effort, never blocks fresh review)
+  if (inputs.prNumber) {
+    try {
+      const threads = await fetchBotReviewThreads(octokit, owner, repo, inputs.prNumber)
+      const unresolvedThreads = threads.filter((t) => !t.isResolved)
+      if (unresolvedThreads.length > 0) {
+        core.info(`Found ${unresolvedThreads.length} unresolved bot thread(s). Running re-evaluation...`)
+        const reReviewResults = await reEvaluateThreads(threads, configArgs, verboseFlags)
+        await resolveThreads(octokit, reReviewResults)
+      } else {
+        core.info('No unresolved bot threads found. Skipping re-evaluation.')
+      }
+    } catch (error) {
+      core.warning(
+        `Re-evaluation of existing threads failed: ${error instanceof Error ? error.message : 'Unknown error'}. Proceeding with fresh review.`,
+      )
+    }
   }
 
   core.info('Executing review command...')
