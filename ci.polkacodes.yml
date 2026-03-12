@@ -1,4 +1,4 @@
 defaultProvider: google-vertex
-defaultModel: gemini-2.5-pro
+defaultModel: gemini-3.1-pro-preview
 maxMessageCount: 150
 budget: 2
