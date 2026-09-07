@@ -6,6 +6,7 @@ import * as core from '@actions/core'
 import { getExecOutput } from '@actions/exec'
 import * as github from '@actions/github'
 import { fetchIssue, fetchPR } from '@polka-codes/github'
+import { remoteRunner } from './remote-runner'
 
 interface SpecificReview {
   file: string
@@ -210,33 +211,6 @@ const extractJsonArray = <T>(raw: string): T[] | null => {
   }
 
   return null
-}
-
-const remoteRunner = async (inputs: { runnerPayload: string; cliVersion: string; runnerApiUrl: string }) => {
-  const payload = parseJson<{ ref?: string; taskId: string; sessionToken: string }>(inputs.runnerPayload, 'runnerPayload')
-  if (payload.ref) {
-    const fetchResult = await safeExec('git', ['fetch', 'origin', payload.ref])
-    if (fetchResult.exitCode !== 0) {
-      throw new Error(`git fetch failed with exit code ${fetchResult.exitCode}`)
-    }
-    const checkoutResult = await safeExec('git', ['checkout', payload.ref])
-    if (checkoutResult.exitCode !== 0) {
-      throw new Error(`git checkout failed with exit code ${checkoutResult.exitCode}`)
-    }
-  }
-  const oidcToken = await core.getIDToken('https://polka.codes')
-
-  const apiParams = inputs.runnerApiUrl ? ['--api', inputs.runnerApiUrl] : []
-
-  await safeExec('polka-runner', [
-    '--task-id',
-    payload.taskId,
-    '--session-token',
-    payload.sessionToken,
-    '--github-token',
-    oidcToken,
-    ...apiParams,
-  ])
 }
 
 interface DiffHunk {
@@ -727,7 +701,10 @@ export async function run(): Promise<void> {
 
     if (inputs.runnerPayload) {
       core.startGroup('Remote runner')
-      await remoteRunner({ runnerPayload: inputs.runnerPayload, cliVersion: inputs.cliVersion, runnerApiUrl: inputs.runnerApiUrl })
+      await remoteRunner(
+        { runnerPayload: inputs.runnerPayload, runnerApiUrl: inputs.runnerApiUrl },
+        { exec: safeExec, getIDToken: core.getIDToken, setSecret: core.setSecret },
+      )
       core.endGroup()
       core.info(`Completed in ${Date.now() - actionStart}ms`)
       return
