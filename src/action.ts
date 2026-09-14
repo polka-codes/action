@@ -46,7 +46,6 @@ interface ActionInputs {
   config?: string
   cliVersion: string
   runnerPayload?: string
-  runnerApiUrl: string
   review: boolean
   verbose?: number
 }
@@ -78,7 +77,6 @@ async function getInputs(): Promise<ActionInputs> {
     config: core.getInput('config') || undefined,
     cliVersion: core.getInput('cli_version') || 'latest',
     runnerPayload: core.getInput('runner_payload') || undefined,
-    runnerApiUrl: core.getInput('runner_api_url'),
     review: coerceBoolean(core.getInput('review')),
     verbose: coerceNumber(verboseStr),
   }
@@ -651,8 +649,8 @@ async function installPolkaTools(inputs: ActionInputs): Promise<void> {
   core.startGroup('Install Polka Codes tools')
 
   if (inputs.runnerPayload) {
-    core.info(`Installing @polka-codes/runner@${inputs.cliVersion} globally...`)
-    const runnerInstallResult = await safeExec('npm', ['install', '-g', `@polka-codes/runner@${inputs.cliVersion}`])
+    core.info('Installing @polka-codes/runner@latest globally...')
+    const runnerInstallResult = await safeExec('npm', ['install', '-g', '@polka-codes/runner@latest'])
     if (runnerInstallResult.exitCode !== 0) {
       throw new Error('Failed to install @polka-codes/runner globally.')
     }
@@ -701,10 +699,7 @@ export async function run(): Promise<void> {
 
     if (inputs.runnerPayload) {
       core.startGroup('Remote runner')
-      await remoteRunner(
-        { runnerPayload: inputs.runnerPayload, runnerApiUrl: inputs.runnerApiUrl },
-        { exec: safeExec, getIDToken: core.getIDToken, setSecret: core.setSecret },
-      )
+      await remoteRunner(inputs.runnerPayload)
       core.endGroup()
       core.info(`Completed in ${Date.now() - actionStart}ms`)
       return

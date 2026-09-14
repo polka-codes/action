@@ -23516,7 +23516,7 @@ var require_extend = __commonJS((exports, module) => {
 
 // src/action.ts
 var core = __toESM(require_core(), 1);
-var import_exec = __toESM(require_exec(), 1);
+var import_exec2 = __toESM(require_exec(), 1);
 var github = __toESM(require_github(), 1);
 import { platform } from "node:os";
 
@@ -34999,43 +34999,20 @@ ${commentBody}
 }
 
 // src/remote-runner.ts
-function callbackOrigin(value) {
-  const url = new URL(value);
-  if (!["https://polka.codes", "https://staging.polka.codes"].includes(url.origin) || url.username || url.password || url.pathname !== "/" || url.search || url.hash) {
-    throw new Error("Runner callback origin is not trusted.");
+var import_core = __toESM(require_core(), 1);
+var import_exec = __toESM(require_exec(), 1);
+async function remoteRunner(runnerPayload) {
+  let payload;
+  try {
+    payload = JSON.parse(runnerPayload);
+  } catch {
+    throw new Error("runner_payload must be valid JSON.");
   }
-  return url.origin;
-}
-async function remoteRunner(inputs, deps) {
-  const payload = JSON.parse(inputs.runnerPayload);
-  if (!payload || typeof payload !== "object" || !("taskId" in payload) || typeof payload.taskId !== "string" || !payload.taskId || !("sessionToken" in payload) || typeof payload.sessionToken !== "string" || !payload.sessionToken || !("apiUrl" in payload) || typeof payload.apiUrl !== "string" || "ref" in payload && typeof payload.ref !== "string") {
-    throw new Error("Invalid remote runner payload.");
+  if (!payload || typeof payload !== "object" || !("taskId" in payload) || typeof payload.taskId !== "string" || !payload.taskId.trim() || !("sessionToken" in payload) || typeof payload.sessionToken !== "string" || !payload.sessionToken.trim() || !("apiUrl" in payload) || typeof payload.apiUrl !== "string" || !payload.apiUrl.trim()) {
+    throw new Error("runner_payload must include nonempty taskId, sessionToken, and apiUrl strings.");
   }
-  const timeout = "timeout" in payload ? payload.timeout : undefined;
-  if (timeout !== undefined && (typeof timeout !== "number" || !Number.isSafeInteger(timeout) || timeout <= 0)) {
-    throw new Error("Runner timeout must be a positive integer number of seconds.");
-  }
-  const apiUrl = callbackOrigin(payload.apiUrl);
-  if (inputs.runnerApiUrl && callbackOrigin(inputs.runnerApiUrl) !== apiUrl) {
-    throw new Error("Runner API input does not match the dispatched callback origin.");
-  }
-  deps.setSecret(payload.sessionToken);
-  if ("ref" in payload && typeof payload.ref === "string" && payload.ref) {
-    for (const args of [
-      ["fetch", "--", "origin", payload.ref],
-      ["checkout", "--detach", "FETCH_HEAD"]
-    ]) {
-      const result2 = await deps.exec("git", args);
-      if (result2.exitCode !== 0)
-        throw new Error(`git ${args[0]} failed with exit code ${result2.exitCode}`);
-    }
-  }
-  const oidcToken = await deps.getIDToken("https://polka.codes");
-  deps.setSecret(oidcToken);
-  const runnerArgs = ["--task-id", payload.taskId, "--session-token", payload.sessionToken, "--github-token", oidcToken, "--api", apiUrl];
-  const result = timeout === undefined ? await deps.exec("polka-runner", runnerArgs) : await deps.exec("timeout", ["--signal=KILL", "--", `${timeout}s`, "polka-runner", ...runnerArgs]);
-  if (result.exitCode !== 0)
-    throw new Error(`Remote runner failed with exit code ${result.exitCode}`);
+  import_core.setSecret(payload.sessionToken);
+  await import_exec.exec("polka-runner", ["--task-id", payload.taskId, "--session-token", payload.sessionToken, "--api", payload.apiUrl]);
 }
 
 // src/action.ts
@@ -35064,7 +35041,6 @@ async function getInputs() {
     config: core.getInput("config") || undefined,
     cliVersion: core.getInput("cli_version") || "latest",
     runnerPayload: core.getInput("runner_payload") || undefined,
-    runnerApiUrl: core.getInput("runner_api_url"),
     review: coerceBoolean(core.getInput("review")),
     verbose: coerceNumber(verboseStr)
   };
@@ -35113,7 +35089,7 @@ var safeExec = async (cmd, args) => {
   const pretty = `${cmd} ${args.join(" ")}`;
   core.debug(`exec: ${pretty}`);
   try {
-    const res = await import_exec.getExecOutput(cmd, args, {
+    const res = await import_exec2.getExecOutput(cmd, args, {
       ignoreReturnCode: true,
       listeners: {
         stderr: (data) => {
@@ -35530,8 +35506,8 @@ ${unpostableBody}`;
 async function installPolkaTools(inputs) {
   core.startGroup("Install Polka Codes tools");
   if (inputs.runnerPayload) {
-    core.info(`Installing @polka-codes/runner@${inputs.cliVersion} globally...`);
-    const runnerInstallResult = await safeExec("npm", ["install", "-g", `@polka-codes/runner@${inputs.cliVersion}`]);
+    core.info("Installing @polka-codes/runner@latest globally...");
+    const runnerInstallResult = await safeExec("npm", ["install", "-g", "@polka-codes/runner@latest"]);
     if (runnerInstallResult.exitCode !== 0) {
       throw new Error("Failed to install @polka-codes/runner globally.");
     }
@@ -35575,7 +35551,7 @@ async function run() {
     await installPolkaTools(inputs);
     if (inputs.runnerPayload) {
       core.startGroup("Remote runner");
-      await remoteRunner({ runnerPayload: inputs.runnerPayload, runnerApiUrl: inputs.runnerApiUrl }, { exec: safeExec, getIDToken: core.getIDToken, setSecret: core.setSecret });
+      await remoteRunner(inputs.runnerPayload);
       core.endGroup();
       core.info(`Completed in ${Date.now() - actionStart}ms`);
       return;
