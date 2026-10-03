@@ -16,7 +16,7 @@ interface SpecificReview {
 
 interface ReviewOutput {
   overview: string
-  specificReviews: SpecificReview[]
+  specificReviews?: SpecificReview[]
 }
 
 interface ReviewThreadComment {
@@ -456,7 +456,7 @@ async function handleReview(inputs: ActionInputs): Promise<void> {
 
   const getPrFiles = async (prNumber: number): Promise<Map<string, FileChangeInfo>> => {
     core.info(`Fetching PR #${prNumber} files for diff validation.`)
-    const { data: files } = await octokit.rest.pulls.listFiles({ owner, repo, pull_number: prNumber })
+    const files = await octokit.paginate(octokit.rest.pulls.listFiles, { owner, repo, pull_number: prNumber })
 
     const fileChanges = new Map<string, FileChangeInfo>()
 
@@ -520,9 +520,9 @@ async function handleReview(inputs: ActionInputs): Promise<void> {
   }
 
   const jsonOutput = reviewCommand.stdout
-  const reviewData = parseJson<ReviewOutput>(jsonOutput, 'review output JSON')
-
-  const { overview, specificReviews } = reviewData
+  const reviewResult = parseJson<ReviewOutput>(jsonOutput, 'review output JSON')
+  const { overview } = reviewResult
+  const specificReviews = reviewResult.specificReviews ?? []
   const issue_number = inputs.prNumber ?? inputs.issueNumber
 
   if (!issue_number) {
